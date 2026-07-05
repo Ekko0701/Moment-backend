@@ -27,6 +27,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
     // DB
+    implementation 'org.springframework.boot:spring-boot-flyway' // Boot 4: Flyway 자동구성 모듈
     implementation 'org.flywaydb:flyway-core'
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'org.postgresql:postgresql'
