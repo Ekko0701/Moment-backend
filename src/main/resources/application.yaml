@@ -1,0 +1,66 @@
+spring:
+  application:
+    name: moment
+  profiles:
+    default: dev
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+
+moment:
+  jwt:
+    # 운영에서는 반드시 MOMENT_JWT_SECRET 환경 변수로 주입 (최소 256bit)
+    secret: ${MOMENT_JWT_SECRET:dev-only-secret-key-change-me-0123456789abcdef}
+    access-token-ttl: 30m
+    refresh-token-ttl: 30d
+  auth:
+    apple:
+      # dev: identityToken 검증을 스텁으로 대체 / prod: Apple 공개키 검증
+      mode: ${MOMENT_APPLE_AUTH_MODE:stub}
+  invite:
+    code-ttl: 24h
+    invitation-ttl: 72h
+  policy:
+    # MVP 정책: 사용자당 활성 ONE_TO_ONE 스페이스 1개 (다중 스페이스 개방 시 false)
+    single-space-enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  datasource:
+    url: jdbc:h2:mem:moment;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+
+logging:
+  level:
+    com.moment: debug
+
+---
+spring:
+  config:
+    activate:
+      on-profile: prod
+  datasource:
+    url: ${MOMENT_DB_URL}
+    username: ${MOMENT_DB_USERNAME}
+    password: ${MOMENT_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 3000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
