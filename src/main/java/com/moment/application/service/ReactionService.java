@@ -5,12 +5,15 @@ import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.PushPort.PushMessage;
 import com.moment.application.port.out.ReactionPort;
 import com.moment.application.port.out.MomentRepositoryPort;
+import com.moment.application.port.out.SpaceRepositoryPort;
 import com.moment.application.port.out.UserRepositoryPort;
 import com.moment.common.exception.BusinessException;
 import com.moment.common.exception.ErrorCode;
 import com.moment.domain.moment.Moment;
 import com.moment.domain.moment.Reaction;
 import com.moment.domain.user.User;
+import java.util.List;
+import com.moment.domain.space.SpaceMember;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Map;
@@ -24,6 +27,7 @@ public class ReactionService implements ReactionUseCase {
 
     private final ReactionPort reactionRepository;
     private final MomentRepositoryPort momentRepository;
+    private final SpaceRepositoryPort spaceRepository;
     private final UserRepositoryPort userRepository;
     private final PushPort pushPort;
     private final Clock clock;
@@ -31,11 +35,13 @@ public class ReactionService implements ReactionUseCase {
     public ReactionService(
             ReactionPort reactionRepository,
             MomentRepositoryPort momentRepository,
+            SpaceRepositoryPort spaceRepository,
             UserRepositoryPort userRepository,
             PushPort pushPort,
             Clock clock) {
         this.reactionRepository = reactionRepository;
         this.momentRepository = momentRepository;
+        this.spaceRepository = spaceRepository;
         this.userRepository = userRepository;
         this.pushPort = pushPort;
         this.clock = clock;
@@ -48,6 +54,14 @@ public class ReactionService implements ReactionUseCase {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "모먼트를 찾을 수 없어요."));
         if (moment.isDeleted()) {
             throw new BusinessException(ErrorCode.NOT_FOUND, "삭제된 모먼트입니다.");
+        }
+
+        // 공간 멤버십 검증 (IDOR 방지)
+        List<SpaceMember> memberships = spaceRepository.findActiveMembershipsByUserId(meId);
+        boolean isMember = memberships.stream()
+                .anyMatch(m -> m.spaceId().equals(moment.spaceId()));
+        if (!isMember) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "해당 스페이스의 멤버가 아니에요.");
         }
 
         Instant now = clock.instant();
@@ -67,7 +81,7 @@ public class ReactionService implements ReactionUseCase {
                 reactionRepository.save(newReaction);
                 // 작성자에게 알림 (내 모먼트에 내가 리액션하면 알림 미발송)
                 if (!moment.authorId().equals(meId)) {
-                    notifyReactionAdded(moment.authorId(), meId, emoji);
+                    notifyReactionAdded(moment.id(), moment.authorId(), meId, emoji);
                 }
             }
         } else {
@@ -75,13 +89,25 @@ public class ReactionService implements ReactionUseCase {
             reactionRepository.save(newReaction);
             // 작성자에게 알림 (내 모먼트에 내가 리액션하면 알림 미발송)
             if (!moment.authorId().equals(meId)) {
-                notifyReactionAdded(moment.authorId(), meId, emoji);
+                notifyReactionAdded(moment.id(), moment.authorId(), meId, emoji);
             }
         }
     }
 
     @Override
     public void remove(UUID meId, UUID momentId) {
+        // 모먼트 존재 확인
+        Moment moment = momentRepository.findById(momentId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "모먼트를 찾을 수 없어요."));
+
+        // 공간 멤버십 검증 (IDOR 방지)
+        List<SpaceMember> memberships = spaceRepository.findActiveMembershipsByUserId(meId);
+        boolean isMember = memberships.stream()
+                .anyMatch(m -> m.spaceId().equals(moment.spaceId()));
+        if (!isMember) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "해당 스페이스의 멤버가 아니에요.");
+        }
+
         var existingReaction = reactionRepository.findByMomentIdAndUserId(momentId, meId);
         if (existingReaction.isPresent()) {
             reactionRepository.deleteById(existingReaction.get().id());
@@ -89,7 +115,8 @@ public class ReactionService implements ReactionUseCase {
         // 없으면 무시
     }
 
-    private void notifyReactionAdded(UUID momentAuthorId, UUID reactorId, String emoji) {
+    private void notifyReactionAdded(UUID momentId, UUID momentAuthorId, UUID reactorId,
+            String emoji) {
         User reactor = userRepository.findById(reactorId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없어요."));
 
@@ -98,6 +125,6 @@ public class ReactionService implements ReactionUseCase {
                 "REACTION_ADDED",
                 reactor.nickname() + "님이 " + emoji + "로 반응했어요.",
                 "모먼트를 확인해 보세요.",
-                Map.of("momentId", momentAuthorId.toString())));
+                Map.of("momentId", momentId.toString())));
     }
 }
