@@ -7,7 +7,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.moment.application.port.in.UserUseCase.UpdateMyProfileCommand;
+import com.moment.application.port.out.DevicePort;
+import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.RefreshTokenPort;
+import com.moment.application.port.out.SpaceRepositoryPort;
 import com.moment.application.port.out.UserRepositoryPort;
 import com.moment.common.exception.BusinessException;
 import com.moment.common.exception.ErrorCode;
@@ -35,6 +38,12 @@ class UserServiceTest {
     private UserRepositoryPort userRepository;
     @Mock
     private RefreshTokenPort refreshTokenPort;
+    @Mock
+    private DevicePort devicePort;
+    @Mock
+    private SpaceRepositoryPort spaceRepository;
+    @Mock
+    private PushPort pushPort;
 
     private UserService userService;
     private User user;
@@ -42,7 +51,7 @@ class UserServiceTest {
     @BeforeEach
     void setUp() {
         userService = new UserService(userRepository, refreshTokenPort,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+                devicePort, spaceRepository, pushPort, Clock.fixed(NOW, ZoneOffset.UTC));
         user = User.signUp(UUID.randomUUID(), "dongjoo_1234", "동주", "sub-1", NOW);
     }
 

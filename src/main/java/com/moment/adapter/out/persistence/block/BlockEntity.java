@@ -1,5 +1,6 @@
 package com.moment.adapter.out.persistence.block;
 
+import com.moment.domain.safety.Block;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -25,4 +26,22 @@ public class BlockEntity {
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    static BlockEntity fromDomain(Block block) {
+        BlockEntity entity = new BlockEntity();
+        entity.id = block.id();
+        entity.applyDomain(block);
+        entity.createdAt = block.createdAt();
+        return entity;
+    }
+
+    void applyDomain(Block block) {
+        this.blockerId = block.blockerId();
+        this.blockedId = block.blockedId();
+    }
+
+    Block toDomain() {
+        return new Block(id, blockerId, blockedId, createdAt);
+    }
 }
+

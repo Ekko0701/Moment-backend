@@ -1,11 +1,14 @@
 package com.moment.adapter.out.persistence.block;
 
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 interface BlockJpaRepository extends JpaRepository<BlockEntity, UUID> {
+
+    Optional<BlockEntity> findByBlockerIdAndBlockedId(UUID blockerId, UUID blockedId);
 
     @Query(
             "SELECT CASE WHEN COUNT(e) > 0 THEN true ELSE false END "
