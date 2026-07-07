@@ -12,7 +12,6 @@ import com.moment.common.response.ApiResponse;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,7 +23,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/v1/moments")
+@RequestMapping("/v1")
 public class MomentController {
 
     private final MomentUseCase momentUseCase;
@@ -33,7 +32,7 @@ public class MomentController {
         this.momentUseCase = momentUseCase;
     }
 
-    @PostMapping("/presign")
+    @PostMapping("/moments/presign")
     ApiResponse<PresignResponse> presign(
             @AuthenticationPrincipal UUID userId,
             @RequestBody PresignRequest request) {
@@ -41,7 +40,7 @@ public class MomentController {
         return ApiResponse.ok(new PresignResponse(response.uploadUrl(), response.imageUrl()));
     }
 
-    @PostMapping
+    @PostMapping("/moments")
     ApiResponse<MomentResponse> create(
             @AuthenticationPrincipal UUID userId,
             @RequestBody MomentRequest request) {
@@ -50,10 +49,11 @@ public class MomentController {
         return ApiResponse.ok(buildResponse(view));
     }
 
-    @GetMapping
+    // 기획서 7장 계약: GET /v1/spaces/{spaceId}/moments?cursor=&limit=
+    @GetMapping("/spaces/{spaceId}/moments")
     ApiResponse<List<MomentResponse>> timeline(
             @AuthenticationPrincipal UUID userId,
-            @RequestParam UUID spaceId,
+            @PathVariable UUID spaceId,
             @RequestParam(required = false) Instant cursor,
             @RequestParam(defaultValue = "20") int limit) {
         TimelinePage page = momentUseCase.timeline(userId, spaceId, cursor, limit);
@@ -61,21 +61,23 @@ public class MomentController {
         return ApiResponse.ok(responses, new TimelineMetadata(page.nextCursor(), page.hasNext()));
     }
 
-    @GetMapping("/latest")
+    // 기획서 7장 계약: GET /v1/spaces/{spaceId}/moments/latest?excludeMine=
+    @GetMapping("/spaces/{spaceId}/moments/latest")
     ApiResponse<MomentResponse> latest(
             @AuthenticationPrincipal UUID userId,
-            @RequestParam UUID spaceId,
+            @PathVariable UUID spaceId,
             @RequestParam(defaultValue = "false") boolean excludeMine) {
         var view = momentUseCase.latest(userId, spaceId, excludeMine);
         return ApiResponse.ok(view.map(this::buildResponse).orElse(null));
     }
 
-    @DeleteMapping("/{id}")
-    ResponseEntity<Void> delete(
+    // 전 API 공통 엔벨로프 계약 유지 — 204 빈 응답이면 클라이언트 엔벨로프 파싱이 깨진다
+    @DeleteMapping("/moments/{id}")
+    ApiResponse<Void> delete(
             @AuthenticationPrincipal UUID userId,
             @PathVariable UUID id) {
         momentUseCase.delete(userId, id);
-        return ResponseEntity.noContent().build();
+        return ApiResponse.ok();
     }
 
     private MomentResponse buildResponse(MomentView view) {

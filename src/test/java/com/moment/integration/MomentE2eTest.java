@@ -148,7 +148,7 @@ class MomentE2eTest {
 
         // 7. B sees timeline
         String timelineResp = client.get()
-                .uri("/v1/moments?spaceId={id}", spaceId)
+                .uri("/v1/spaces/{id}/moments", spaceId)
                 .header("Authorization", "Bearer " + tokenB)
                 .retrieve()
                 .body(String.class);
@@ -166,7 +166,7 @@ class MomentE2eTest {
 
         // 9. Verify reaction in timeline
         String timelineResp2 = client.get()
-                .uri("/v1/moments?spaceId={id}", spaceId)
+                .uri("/v1/spaces/{id}/moments", spaceId)
                 .header("Authorization", "Bearer " + tokenB)
                 .retrieve()
                 .body(String.class);
@@ -233,7 +233,7 @@ class MomentE2eTest {
 
         // C tries to access A-B space
         String forbiddenResp = client.get()
-                .uri("/v1/moments?spaceId={id}", spaceId)
+                .uri("/v1/spaces/{id}/moments", spaceId)
                 .header("Authorization", "Bearer " + tokenC)
                 .retrieve()
                 .body(String.class);
