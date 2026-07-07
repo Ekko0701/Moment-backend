@@ -18,6 +18,8 @@ public record User(
         String profileImageUrl,
         AuthProvider authProvider,
         String appleSub,
+        String email,
+        String passwordHash,
         boolean searchable,
         Instant handleUpdatedAt,
         UserStatus status,
@@ -34,18 +36,27 @@ public record User(
         validateHandle(handle);
         validateNickname(nickname);
         return new User(id, handle, nickname, null, AuthProvider.APPLE, appleSub,
-                true, null, UserStatus.ACTIVE, now, now);
+                null, null, true, null, UserStatus.ACTIVE, now, now);
+    }
+
+    public static User signUpWithEmail(UUID id, String handle, String nickname, String email,
+            String passwordHash, Instant now) {
+        validateHandle(handle);
+        validateNickname(nickname);
+        validateEmail(email);
+        return new User(id, handle, nickname, null, AuthProvider.EMAIL, null,
+                email, passwordHash, true, null, UserStatus.ACTIVE, now, now);
     }
 
     public User changeNickname(String newNickname, Instant now) {
         validateNickname(newNickname);
         return new User(id, handle, newNickname, profileImageUrl, authProvider, appleSub,
-                searchable, handleUpdatedAt, status, createdAt, now);
+                email, passwordHash, searchable, handleUpdatedAt, status, createdAt, now);
     }
 
     public User changeProfileImage(String newProfileImageUrl, Instant now) {
         return new User(id, handle, nickname, newProfileImageUrl, authProvider, appleSub,
-                searchable, handleUpdatedAt, status, createdAt, now);
+                email, passwordHash, searchable, handleUpdatedAt, status, createdAt, now);
     }
 
     /** 핸들 변경 — 14일에 1회 제한 (F-08-02). */
@@ -55,19 +66,19 @@ public record User(
             throw new BusinessException(ErrorCode.CONFLICT, "핸들은 14일에 한 번만 변경할 수 있어요.");
         }
         return new User(id, newHandle, nickname, profileImageUrl, authProvider, appleSub,
-                searchable, now, status, createdAt, now);
+                email, passwordHash, searchable, now, status, createdAt, now);
     }
 
     /** 검색 허용 on/off (F-02-10). */
     public User changeSearchable(boolean newSearchable, Instant now) {
         return new User(id, handle, nickname, profileImageUrl, authProvider, appleSub,
-                newSearchable, handleUpdatedAt, status, createdAt, now);
+                email, passwordHash, newSearchable, handleUpdatedAt, status, createdAt, now);
     }
 
-    /** 탈퇴 — 개인 식별 정보를 익명화하고 핸들/애플 식별자를 해제한다 (F-10). */
+    /** 탈퇴 — 개인 식별 정보를 익명화하고 핸들/애플 식별자/이메일을 해제한다 (F-10). */
     public User withdraw(String anonymizedHandle, Instant now) {
         return new User(id, anonymizedHandle, WITHDRAWN_NICKNAME, null, authProvider, null,
-                false, handleUpdatedAt, UserStatus.DELETED, createdAt, now);
+                null, null, false, handleUpdatedAt, UserStatus.DELETED, createdAt, now);
     }
 
     public boolean isActive() {
@@ -85,6 +96,15 @@ public record User(
         if (nickname == null || nickname.isBlank()
                 || nickname.length() < NICKNAME_MIN_LENGTH || nickname.length() > NICKNAME_MAX_LENGTH) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "닉네임은 2~12자로 입력해 주세요.");
+        }
+    }
+
+    public static void validateEmail(String email) {
+        if (email == null || email.isBlank()) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "이메일은 필수입니다.");
+        }
+        if (!email.contains("@")) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST, "올바른 이메일 형식이 아니에요.");
         }
     }
 }

@@ -11,4 +11,8 @@ interface UserJpaRepository extends JpaRepository<UserEntity, UUID> {
     Optional<UserEntity> findByHandle(String handle);
 
     boolean existsByHandle(String handle);
+
+    Optional<UserEntity> findByEmail(String email);
+
+    boolean existsByEmail(String email);
 }

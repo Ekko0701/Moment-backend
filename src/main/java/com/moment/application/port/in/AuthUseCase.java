@@ -7,6 +7,12 @@ public interface AuthUseCase {
     /** Apple 로그인 — 미가입 사용자는 자동 가입(핸들 자동 생성) 후 토큰을 발급한다 (F-01). */
     LoginResult loginWithApple(String identityToken, String nickname);
 
+    /** 이메일 가입 — 새 사용자를 생성하고 토큰을 발급한다 (F-01-05). */
+    LoginResult signUpWithEmail(String email, String rawPassword, String nickname);
+
+    /** 이메일 로그인 — 기존 사용자를 검증하고 토큰을 발급한다 (F-01-05). */
+    TokenPair loginWithEmail(String email, String rawPassword);
+
     /** 리프레시 토큰 회전 — 기존 토큰 폐기 후 새 쌍을 발급한다 (F-01-04). */
     TokenPair refresh(String refreshToken);
 

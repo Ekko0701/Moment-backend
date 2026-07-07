@@ -1,6 +1,8 @@
 package com.moment.adapter.in.web;
 
 import com.moment.adapter.in.web.dto.AppleLoginRequest;
+import com.moment.adapter.in.web.dto.EmailLoginRequest;
+import com.moment.adapter.in.web.dto.EmailSignupRequest;
 import com.moment.adapter.in.web.dto.RefreshRequest;
 import com.moment.adapter.in.web.dto.TokenResponse;
 import com.moment.application.port.in.AuthUseCase;
@@ -30,6 +32,19 @@ public class AuthController {
         AuthUseCase.LoginResult result =
                 authUseCase.loginWithApple(request.identityToken(), request.nickname());
         return ApiResponse.ok(TokenResponse.from(result));
+    }
+
+    @PostMapping("/email/signup")
+    ApiResponse<TokenResponse> signUpWithEmail(@Valid @RequestBody EmailSignupRequest request) {
+        AuthUseCase.LoginResult result =
+                authUseCase.signUpWithEmail(request.email(), request.password(), request.nickname());
+        return ApiResponse.ok(TokenResponse.from(result));
+    }
+
+    @PostMapping("/email/login")
+    ApiResponse<TokenResponse> loginWithEmail(@Valid @RequestBody EmailLoginRequest request) {
+        AuthUseCase.TokenPair tokens = authUseCase.loginWithEmail(request.email(), request.password());
+        return ApiResponse.ok(TokenResponse.from(tokens));
     }
 
     @PostMapping("/refresh")

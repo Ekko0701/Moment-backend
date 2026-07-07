@@ -2,6 +2,7 @@ package com.moment.application.service;
 
 import com.moment.application.port.in.AuthUseCase;
 import com.moment.application.port.out.AppleAuthPort;
+import com.moment.application.port.out.PasswordHasherPort;
 import com.moment.application.port.out.RefreshTokenPort;
 import com.moment.application.port.out.TokenPort;
 import com.moment.application.port.out.UserRepositoryPort;
@@ -29,9 +30,11 @@ public class AuthService implements AuthUseCase {
 
     private static final String DEFAULT_NICKNAME = "모먼트";
     private static final int REFRESH_TOKEN_BYTES = 32;
+    private static final int MIN_PASSWORD_LENGTH = 8;
 
     private final AppleAuthPort appleAuthPort;
     private final UserRepositoryPort userRepository;
+    private final PasswordHasherPort passwordHasher;
     private final RefreshTokenPort refreshTokenPort;
     private final TokenPort tokenPort;
     private final HandleGenerator handleGenerator;
@@ -40,10 +43,11 @@ public class AuthService implements AuthUseCase {
     private final SecureRandom secureRandom = new SecureRandom();
 
     public AuthService(AppleAuthPort appleAuthPort, UserRepositoryPort userRepository,
-            RefreshTokenPort refreshTokenPort, TokenPort tokenPort,
+            PasswordHasherPort passwordHasher, RefreshTokenPort refreshTokenPort, TokenPort tokenPort,
             HandleGenerator handleGenerator, MomentProperties properties, Clock clock) {
         this.appleAuthPort = appleAuthPort;
         this.userRepository = userRepository;
+        this.passwordHasher = passwordHasher;
         this.refreshTokenPort = refreshTokenPort;
         this.tokenPort = tokenPort;
         this.handleGenerator = handleGenerator;
@@ -56,11 +60,47 @@ public class AuthService implements AuthUseCase {
         AppleAuthPort.AppleIdentity identity = appleAuthPort.verify(identityToken);
         Optional<User> existing = userRepository.findByAppleSub(identity.appleSub());
         boolean isNewUser = existing.isEmpty();
-        User user = existing.orElseGet(() -> signUp(identity.appleSub(), nickname));
+        User user = existing.orElseGet(() -> signUpWithApple(identity.appleSub(), nickname));
         if (!user.isActive()) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "사용할 수 없는 계정이에요.");
         }
         return new LoginResult(issueTokens(user.id()), isNewUser);
+    }
+
+    @Override
+    public LoginResult signUpWithEmail(String email, String rawPassword, String nickname) {
+        User.validateEmail(email);
+        validatePassword(rawPassword);
+        User.validateNickname(nickname);
+
+        if (userRepository.existsByEmail(email)) {
+            throw new BusinessException(ErrorCode.CONFLICT, "이미 가입한 이메일이에요.");
+        }
+
+        String handle = handleGenerator.generate(nickname);
+        String passwordHash = passwordHasher.hash(rawPassword);
+        User user = userRepository.save(User.signUpWithEmail(UUID.randomUUID(), handle, nickname,
+                email, passwordHash, clock.instant()));
+
+        return new LoginResult(issueTokens(user.id()), true);
+    }
+
+    @Override
+    public TokenPair loginWithEmail(String email, String rawPassword) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED,
+                        "이메일 또는 비밀번호가 올바르지 않아요."));
+
+        if (user.passwordHash() == null || !passwordHasher.matches(rawPassword, user.passwordHash())) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED,
+                    "이메일 또는 비밀번호가 올바르지 않아요.");
+        }
+
+        if (!user.isActive()) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "사용할 수 없는 계정이에요.");
+        }
+
+        return issueTokens(user.id());
     }
 
     @Override
@@ -80,7 +120,7 @@ public class AuthService implements AuthUseCase {
         refreshTokenPort.deleteAllByUserId(userId);
     }
 
-    private User signUp(String appleSub, String nickname) {
+    private User signUpWithApple(String appleSub, String nickname) {
         String resolvedNickname =
                 (nickname == null || nickname.isBlank()) ? DEFAULT_NICKNAME : nickname;
         String handle = handleGenerator.generate(resolvedNickname);
@@ -97,6 +137,13 @@ public class AuthService implements AuthUseCase {
         refreshTokenPort.save(new RefreshToken(UUID.randomUUID(), userId, sha256(refreshToken),
                 now.plus(properties.jwt().refreshTokenTtl()), now));
         return new TokenPair(accessToken, refreshToken);
+    }
+
+    private void validatePassword(String rawPassword) {
+        if (rawPassword == null || rawPassword.length() < MIN_PASSWORD_LENGTH) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "비밀번호는 8자 이상이어야 해요.");
+        }
     }
 
     static String sha256(String value) {

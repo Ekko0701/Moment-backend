@@ -93,7 +93,7 @@ class MomentServiceTest {
         when(momentRepository.save(any(Moment.class))).thenReturn(saved);
 
         User author = new User(meId, "handle1", "nickname1", null, AuthProvider.APPLE, null,
-                true, null, UserStatus.ACTIVE, Instant.now(), Instant.now());
+                null, null, true, null, UserStatus.ACTIVE, Instant.now(), Instant.now());
         when(userRepository.findById(meId)).thenReturn(Optional.of(author));
         when(reactionRepository.findAllByMomentIdIn(any())).thenReturn(List.of());
 

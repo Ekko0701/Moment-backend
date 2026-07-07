@@ -14,18 +14,36 @@ class UserTest {
 
     private static final Instant NOW = Instant.parse("2026-07-05T00:00:00Z");
 
-    private User signUpUser() {
+    private User signUpAppleUser() {
         return User.signUp(UUID.randomUUID(), "dongjoo_1234", "동주", "apple-sub", NOW);
     }
 
     @Test
-    @DisplayName("가입 시 검색 허용이 기본 활성화되고 상태는 ACTIVE다")
+    @DisplayName("Apple 가입 시 검색 허용이 기본 활성화되고 상태는 ACTIVE다")
     void signUp_defaults() {
-        User user = signUpUser();
+        User user = signUpAppleUser();
 
         assertThat(user.searchable()).isTrue();
         assertThat(user.status()).isEqualTo(UserStatus.ACTIVE);
         assertThat(user.handleUpdatedAt()).isNull();
+        assertThat(user.authProvider()).isEqualTo(AuthProvider.APPLE);
+        assertThat(user.email()).isNull();
+        assertThat(user.passwordHash()).isNull();
+    }
+
+    @Test
+    @DisplayName("이메일 가입 시 검색 허용이 기본 활성화되고 상태는 ACTIVE다")
+    void signUpWithEmail_defaults() {
+        User user = User.signUpWithEmail(UUID.randomUUID(), "test_user_01", "테스트",
+                "test@example.com", "hashed", NOW);
+
+        assertThat(user.searchable()).isTrue();
+        assertThat(user.status()).isEqualTo(UserStatus.ACTIVE);
+        assertThat(user.handleUpdatedAt()).isNull();
+        assertThat(user.authProvider()).isEqualTo(AuthProvider.EMAIL);
+        assertThat(user.email()).isEqualTo("test@example.com");
+        assertThat(user.passwordHash()).isEqualTo("hashed");
+        assertThat(user.appleSub()).isNull();
     }
 
     @Test
@@ -36,9 +54,17 @@ class UserTest {
     }
 
     @Test
+    @DisplayName("이메일 형식이 올바르지 않으면 가입할 수 없다")
+    void signUpWithEmail_invalidEmail_throws() {
+        assertThatThrownBy(
+                () -> User.signUpWithEmail(UUID.randomUUID(), "test_user_01", "테스트", "invalid", "hash", NOW))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
     @DisplayName("핸들 변경은 불변 객체를 유지하며 변경 시각을 기록한다")
     void changeHandle_returnsNewInstance() {
-        User user = signUpUser();
+        User user = signUpAppleUser();
 
         User changed = user.changeHandle("new_handle", NOW);
 
@@ -50,7 +76,7 @@ class UserTest {
     @Test
     @DisplayName("핸들은 14일 이내 재변경할 수 없다")
     void changeHandle_within14Days_throws() {
-        User changed = signUpUser().changeHandle("first_change", NOW);
+        User changed = signUpAppleUser().changeHandle("first_change", NOW);
         Instant thirteenDaysLater = NOW.plus(Duration.ofDays(13));
 
         assertThatThrownBy(() -> changed.changeHandle("second_try", thirteenDaysLater))
@@ -61,7 +87,7 @@ class UserTest {
     @Test
     @DisplayName("14일 경과 후에는 핸들을 변경할 수 있다")
     void changeHandle_after14Days_succeeds() {
-        User changed = signUpUser().changeHandle("first_change", NOW);
+        User changed = signUpAppleUser().changeHandle("first_change", NOW);
         Instant fifteenDaysLater = NOW.plus(Duration.ofDays(15));
 
         User result = changed.changeHandle("second_try", fifteenDaysLater);
@@ -70,15 +96,17 @@ class UserTest {
     }
 
     @Test
-    @DisplayName("탈퇴 시 개인 정보가 익명화되고 애플 식별자가 해제된다")
+    @DisplayName("탈퇴 시 개인 정보가 익명화되고 애플/이메일 식별자가 해제된다")
     void withdraw_anonymizes() {
-        User user = signUpUser();
+        User user = signUpAppleUser();
 
         User withdrawn = user.withdraw("del_abc12345678", NOW);
 
         assertThat(withdrawn.status()).isEqualTo(UserStatus.DELETED);
         assertThat(withdrawn.nickname()).isEqualTo(User.WITHDRAWN_NICKNAME);
         assertThat(withdrawn.appleSub()).isNull();
+        assertThat(withdrawn.email()).isNull();
+        assertThat(withdrawn.passwordHash()).isNull();
         assertThat(withdrawn.profileImageUrl()).isNull();
         assertThat(withdrawn.searchable()).isFalse();
         assertThat(withdrawn.isActive()).isFalse();

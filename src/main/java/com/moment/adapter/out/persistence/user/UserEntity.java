@@ -38,6 +38,12 @@ public class UserEntity {
     @Column(name = "apple_sub", unique = true)
     private String appleSub;
 
+    @Column(name = "email", unique = true)
+    private String email;
+
+    @Column(name = "password_hash")
+    private String passwordHash;
+
     @Column(name = "is_searchable", nullable = false)
     private boolean searchable;
 
@@ -68,6 +74,8 @@ public class UserEntity {
         this.profileImageUrl = user.profileImageUrl();
         this.authProvider = user.authProvider();
         this.appleSub = user.appleSub();
+        this.email = user.email();
+        this.passwordHash = user.passwordHash();
         this.searchable = user.searchable();
         this.handleUpdatedAt = user.handleUpdatedAt();
         this.status = user.status();
@@ -76,6 +84,6 @@ public class UserEntity {
 
     User toDomain() {
         return new User(id, handle, nickname, profileImageUrl, authProvider, appleSub,
-                searchable, handleUpdatedAt, status, createdAt, updatedAt);
+                email, passwordHash, searchable, handleUpdatedAt, status, createdAt, updatedAt);
     }
 }
