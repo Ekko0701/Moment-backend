@@ -1,0 +1,37 @@
+# 로컬 리허설용 — 운영(RDS + App Runner/ECS) 구성을 로컬에서 재현한다.
+# 실행: docker compose up --build
+# 주의: 여기의 비밀번호는 로컬 전용 값이다. 운영 값은 절대 이 파일에 넣지 않는다.
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: moment
+      POSTGRES_USER: moment_app
+      POSTGRES_PASSWORD: local-only-password
+    ports:
+      # 호스트에 네이티브 Postgres(5432)가 있어도 충돌하지 않도록 55432로 노출
+      - "55432:5432"
+    volumes:
+      - moment-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U moment_app -d moment"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      MOMENT_DB_URL: jdbc:postgresql://db:5432/moment
+      MOMENT_DB_USERNAME: moment_app
+      MOMENT_DB_PASSWORD: local-only-password
+      MOMENT_JWT_SECRET: local-only-jwt-secret-0123456789abcdef0123456789abcdef
+    ports:
+      - "8080:8080"
+
+volumes:
+  moment-db-data:
