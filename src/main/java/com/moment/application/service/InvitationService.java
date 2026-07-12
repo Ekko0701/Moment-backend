@@ -80,7 +80,7 @@ public class InvitationService implements InvitationUseCase {
     }
 
     @Override
-    public void send(UUID meId, SendCommand command) {
+    public SpaceInvitation send(UUID meId, SendCommand command) {
         if ((command.toUserId() == null && command.code() == null)
                 || (command.toUserId() != null && command.code() != null)) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST,
@@ -155,6 +155,8 @@ public class InvitationService implements InvitationUseCase {
                 "초대가 도착했어요",
                 "새로운 연결 요청을 확인해보세요.",
                 Map.of()));
+
+        return invitation;
     }
 
     @Override

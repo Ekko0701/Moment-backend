@@ -9,7 +9,7 @@ public interface InvitationUseCase {
 
     IssuedCode issueCode(UUID meId);
 
-    void send(UUID meId, SendCommand command);
+    SpaceInvitation send(UUID meId, SendCommand command);
 
     List<SpaceInvitation> list(UUID meId, boolean received);
 

@@ -34,9 +34,22 @@ public class InvitationController {
     }
 
     @PostMapping
-    ApiResponse<Void> sendInvitation(@AuthenticationPrincipal UUID userId, @RequestBody SendInvitationRequest request) {
-        invitationUseCase.send(userId, new InvitationUseCase.SendCommand(request.toUserId(), request.code()));
-        return ApiResponse.ok();
+    ApiResponse<InvitationResponse> sendInvitation(@AuthenticationPrincipal UUID userId,
+            @RequestBody SendInvitationRequest request) {
+        SpaceInvitation invitation = invitationUseCase.send(userId,
+                new InvitationUseCase.SendCommand(request.toUserId(), request.code()));
+        // 보낸 사람 관점의 상대방 = 초대 대상 (iOS가 생성된 초대를 즉시 표시할 수 있도록 반환)
+        var counterpart = userRepository.findById(invitation.toUserId()).orElseThrow();
+        return ApiResponse.ok(new InvitationResponse(
+                invitation.id(),
+                invitation.fromUserId(),
+                invitation.toUserId(),
+                invitation.via().name(),
+                invitation.status().name(),
+                invitation.createdAt(),
+                invitation.respondedAt(),
+                new InvitationResponse.UserSummary(counterpart.id(), counterpart.handle(),
+                        counterpart.nickname(), counterpart.profileImageUrl())));
     }
 
     @GetMapping
@@ -61,10 +74,11 @@ public class InvitationController {
         return ApiResponse.ok(responses);
     }
 
+    // 204 대신 200 엔벨로프 — 클라이언트가 모든 응답을 ApiResponse로 일관 파싱한다 (DELETE와 동일 규약)
     @PatchMapping("/{id}")
-    ResponseEntity<Void> respond(@AuthenticationPrincipal UUID userId, @PathVariable UUID id,
+    ApiResponse<Void> respond(@AuthenticationPrincipal UUID userId, @PathVariable UUID id,
             @RequestBody RespondInvitationRequest request) {
         invitationUseCase.respond(userId, id, new InvitationUseCase.RespondCommand(request.action()));
-        return ResponseEntity.noContent().build();
+        return ApiResponse.ok();
     }
 }
