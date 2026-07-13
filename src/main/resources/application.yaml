@@ -59,6 +59,13 @@ spring:
       maximum-pool-size: 10
       connection-timeout: 3000
 
+# 운영에서는 API 문서를 노출하지 않는다
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
 management:
   endpoints:
     web:
