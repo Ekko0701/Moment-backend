@@ -30,6 +30,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-flyway' // Boot 4: Flyway 자동구성 모듈
     implementation 'org.flywaydb:flyway-core'
     runtimeOnly 'com.h2database:h2'
+    // Boot 4는 H2 콘솔 자동구성이 별도 모듈 — dev 프로필의 /h2-console에 필요
+    runtimeOnly 'org.springframework.boot:spring-boot-h2console'
     runtimeOnly 'org.postgresql:postgresql'
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
