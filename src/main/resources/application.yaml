@@ -12,14 +12,15 @@ spring:
 
 moment:
   jwt:
-    # 운영에서는 반드시 MOMENT_JWT_SECRET 환경 변수로 주입 (최소 256bit)
-    secret: ${MOMENT_JWT_SECRET:dev-only-secret-key-change-me-0123456789abcdef}
+    # 개발용 기본값 없음 — 운영은 MOMENT_JWT_SECRET 환경변수 필수(최소 256bit).
+    # dev 프로필이 개발용 기본값을 아래에서 덮어쓴다. 미주입 시 기동 실패(fail-closed).
+    secret: ${MOMENT_JWT_SECRET}
     access-token-ttl: 30m
     refresh-token-ttl: 30d
   auth:
     apple:
-      # dev: identityToken 검증을 스텁으로 대체 / prod: Apple 공개키 검증
-      mode: ${MOMENT_APPLE_AUTH_MODE:stub}
+      # 기본값 apple(운영 안전). dev 프로필이 stub으로 덮어쓴다.
+      mode: ${MOMENT_APPLE_AUTH_MODE:apple}
   invite:
     code-ttl: 24h
     invitation-ttl: 72h
@@ -41,6 +42,14 @@ spring:
     console:
       enabled: true
       path: /h2-console
+
+# 개발 전용 인증 기본값 — 운영(prod)에는 존재하지 않는다.
+moment:
+  jwt:
+    secret: dev-only-secret-key-change-me-0123456789abcdef
+  auth:
+    apple:
+      mode: stub
 
 logging:
   level:

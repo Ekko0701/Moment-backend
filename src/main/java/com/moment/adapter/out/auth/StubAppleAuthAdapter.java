@@ -3,9 +3,11 @@ package com.moment.adapter.out.auth;
 import com.moment.application.port.out.AppleAuthPort;
 import com.moment.common.exception.BusinessException;
 import com.moment.common.exception.ErrorCode;
+import java.util.Arrays;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 /**
@@ -13,13 +15,19 @@ import org.springframework.stereotype.Component;
  * 운영 전환 시 moment.auth.apple.mode=apple + Apple 공개키 검증 어댑터로 교체한다.
  */
 @Component
-@ConditionalOnProperty(prefix = "moment.auth.apple", name = "mode", havingValue = "stub",
-        matchIfMissing = true)
+@ConditionalOnProperty(prefix = "moment.auth.apple", name = "mode", havingValue = "stub")
 public class StubAppleAuthAdapter implements AppleAuthPort {
 
     private static final Logger log = LoggerFactory.getLogger(StubAppleAuthAdapter.class);
 
-    public StubAppleAuthAdapter() {
+    public StubAppleAuthAdapter(Environment environment) {
+        // fail-closed: 운영(prod) 프로필에서는 스텁 인증이 절대 기동되지 않도록 막는다.
+        boolean prodActive = Arrays.asList(environment.getActiveProfiles()).contains("prod");
+        if (prodActive) {
+            throw new IllegalStateException(
+                    "STUB Apple 인증은 운영 환경에서 사용할 수 없습니다. "
+                            + "MOMENT_APPLE_AUTH_MODE=apple 로 설정하고 실제 Apple 검증 어댑터를 주입하세요.");
+        }
         log.warn("Apple 인증이 STUB 모드로 동작 중입니다. 운영 환경에서는 사용하지 마세요.");
     }
 
