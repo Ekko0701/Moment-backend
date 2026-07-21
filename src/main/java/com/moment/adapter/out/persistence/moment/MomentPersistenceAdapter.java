@@ -35,8 +35,8 @@ class MomentPersistenceAdapter implements MomentRepositoryPort {
     }
 
     @Override
-    public TimelinePage findTimeline(UUID spaceId, Instant cursor, int limit) {
-        List<Moment> moments = jpaRepository.findTimeline(spaceId, cursor, limit)
+    public TimelinePage findTimeline(UUID spaceId, Instant cursorCreatedAt, UUID cursorId, int limit) {
+        List<Moment> moments = jpaRepository.findTimeline(spaceId, cursorCreatedAt, cursorId, limit)
                 .stream()
                 .map(MomentEntity::toDomain)
                 .toList();

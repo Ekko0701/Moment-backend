@@ -89,6 +89,7 @@ class MomentServiceTest {
         when(spaceRepository.findActiveMembersBySpaceId(spaceId))
                 .thenReturn(List.of(myMem, mem1, mem2));
 
+        when(storagePort.isManagedImageUrl("url")).thenReturn(true);
         Moment saved = Moment.create(UUID.randomUUID(), spaceId, meId, "url", "text", clock.instant());
         when(momentRepository.save(any(Moment.class))).thenReturn(saved);
 

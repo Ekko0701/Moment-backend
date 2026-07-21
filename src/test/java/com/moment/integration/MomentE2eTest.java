@@ -141,7 +141,7 @@ class MomentE2eTest {
                 .uri("/v1/moments")
                 .header("Authorization", "Bearer " + tokenA)
                 .contentType(MediaType.APPLICATION_JSON)
-                .body("{\"spaceId\":\"" + spaceId + "\",\"imageUrl\":\"https://example.com/img.jpg\",\"text\":\"첫 순간\"}")
+                .body("{\"spaceId\":\"" + spaceId + "\",\"text\":\"첫 순간\"}")
                 .retrieve()
                 .body(String.class);
         momentId = UUID.fromString(extractFromData(createResp, "id"));

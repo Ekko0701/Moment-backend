@@ -18,11 +18,11 @@ public interface MomentRepositoryPort {
     /**
      * 스페이스 타임라인 조회.
      * - deletedAt이 null인 모먼트만 반환
-     * - createdAt이 cursor보다 이전인 모먼트만 반환 (cursor가 null이면 제약 없음)
-     * - createdAt 기준 최신순 정렬
+     * - (createdAt, id) 복합 커서보다 이전인 모먼트만 반환 (cursorCreatedAt이 null이면 제약 없음)
+     * - (createdAt DESC, id DESC) 정렬 — 동시각 타이 시 id로 안정 정렬
      * - limit건까지만 반환
      */
-    TimelinePage findTimeline(UUID spaceId, Instant cursor, int limit);
+    TimelinePage findTimeline(UUID spaceId, Instant cursorCreatedAt, UUID cursorId, int limit);
 
     /**
      * 스페이스의 최신 모먼트 조회.

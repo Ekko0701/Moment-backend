@@ -10,7 +10,6 @@ import com.moment.application.port.in.MomentUseCase.MomentView;
 import com.moment.application.port.in.MomentUseCase.TimelinePage;
 import com.moment.common.response.ApiResponse;
 import jakarta.validation.Valid;
-import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -55,7 +54,7 @@ public class MomentController {
     ApiResponse<List<MomentResponse>> timeline(
             @AuthenticationPrincipal UUID userId,
             @PathVariable UUID spaceId,
-            @RequestParam(required = false) Instant cursor,
+            @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "20") int limit) {
         TimelinePage page = momentUseCase.timeline(userId, spaceId, cursor, limit);
         var responses = page.items().stream().map(this::buildResponse).toList();
@@ -102,6 +101,6 @@ public class MomentController {
     record PresignResponse(String uploadUrl, String imageUrl) {
     }
 
-    record TimelineMetadata(Instant nextCursor, boolean hasNext) {
+    record TimelineMetadata(String nextCursor, boolean hasNext) {
     }
 }

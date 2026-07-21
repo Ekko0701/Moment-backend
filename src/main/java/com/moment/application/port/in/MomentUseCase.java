@@ -1,6 +1,5 @@
 package com.moment.application.port.in;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -33,11 +32,11 @@ public interface MomentUseCase {
      *
      * @param meId 현재 사용자 ID
      * @param spaceId 스페이스 ID
-     * @param cursor 페이지 커서 (null 허용)
+     * @param cursor 불투명 페이지 커서 (null 허용) — (createdAt, id)를 인코딩한 문자열
      * @param limit 최대 조회 건수 (기본 20, 최대 50)
      * @return 모먼트 목록 및 페이징 정보
      */
-    TimelinePage timeline(UUID meId, UUID spaceId, Instant cursor, int limit);
+    TimelinePage timeline(UUID meId, UUID spaceId, String cursor, int limit);
 
     /**
      * 스페이스의 최신 모먼트 조회 (위젯용).
@@ -80,6 +79,6 @@ public interface MomentUseCase {
         }
     }
 
-    record TimelinePage(List<MomentView> items, Instant nextCursor, boolean hasNext) {
+    record TimelinePage(List<MomentView> items, String nextCursor, boolean hasNext) {
     }
 }

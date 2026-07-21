@@ -17,6 +17,13 @@ public interface StoragePort {
     PresignedUpload issueUploadUrl(UUID userId, String contentType);
 
     /**
+     * 클라이언트가 모먼트 생성 시 제출한 imageUrl이 이 스토리지가 발급한 관리 경로인지 검증한다.
+     * 임의의 외부 URL을 모먼트 이미지로 주입하는 것을 막는다.
+     * (S3 어댑터로 교체 시 사용자별 prefix까지 확인하도록 강화)
+     */
+    boolean isManagedImageUrl(String imageUrl);
+
+    /**
      * Pre-signed 업로드 정보.
      *
      * @param uploadUrl 클라이언트가 PUT 요청을 보낼 URL

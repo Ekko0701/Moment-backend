@@ -2,6 +2,8 @@ package com.moment.adapter.out.persistence.user;
 
 import com.moment.application.port.out.UserRepositoryPort;
 import com.moment.domain.user.User;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
@@ -29,6 +31,11 @@ class UserPersistenceAdapter implements UserRepositoryPort {
     @Override
     public Optional<User> findById(UUID id) {
         return jpaRepository.findById(id).map(UserEntity::toDomain);
+    }
+
+    @Override
+    public List<User> findAllByIds(Collection<UUID> ids) {
+        return jpaRepository.findAllById(ids).stream().map(UserEntity::toDomain).toList();
     }
 
     @Override
