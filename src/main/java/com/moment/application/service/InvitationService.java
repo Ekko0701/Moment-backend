@@ -182,7 +182,8 @@ public class InvitationService implements InvitationUseCase {
 
     @Override
     public void respond(UUID meId, UUID invitationId, RespondCommand command) {
-        SpaceInvitation invitation = invitationPort.findById(invitationId)
+        // 행을 잠가(비관적 쓰기 잠금) 동시 수락 시 이중 스페이스 생성을 방지한다.
+        SpaceInvitation invitation = invitationPort.findByIdForUpdate(invitationId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "대상을 찾을 수 없어요."));
 
@@ -210,8 +211,31 @@ public class InvitationService implements InvitationUseCase {
                     "이 초대를 수락할 수 없어요.");
         }
 
+        // 이미 처리된(수락/거절/취소/만료) 초대는 다시 수락할 수 없다.
+        if (invitation.status() != InvitationStatus.PENDING) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "이미 처리된 요청이에요.");
+        }
+
+        UUID fromUserId = invitation.fromUserId();
+
+        // 양쪽 계정이 모두 활성 상태여야 한다 (탈퇴/정지 계정과는 연결 불가).
+        if (!isActiveUser(meId) || !isActiveUser(fromUserId)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND,
+                    "연결할 수 없는 상대예요.");
+        }
+
+        // 수락 시점에 차단 관계를 다시 확인한다 (요청 이후 차단됐을 수 있음).
+        if (blockPort.existsBlockBetween(meId, fromUserId)) {
+            throw new BusinessException(ErrorCode.NOT_FOUND,
+                    "연결할 수 없는 상대예요.");
+        }
+
+        // 1인 1스페이스 정책은 양쪽 모두에 적용한다.
+        // (초대 발신자가 요청 후 다른 상대와 연결됐다면 이 수락으로 두 번째 스페이스가 생기면 안 됨)
         if (properties.policy().singleSpaceEnabled()
-                && spaceRepository.existsActiveOneToOneMembership(meId)) {
+                && (spaceRepository.existsActiveOneToOneMembership(meId)
+                        || spaceRepository.existsActiveOneToOneMembership(fromUserId))) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "이미 연결된 상대가 있어요.");
         }
@@ -276,6 +300,10 @@ public class InvitationService implements InvitationUseCase {
 
         SpaceInvitation canceled = invitation.cancel(now);
         invitationPort.save(canceled);
+    }
+
+    private boolean isActiveUser(UUID userId) {
+        return userRepository.findById(userId).map(user -> user.isActive()).orElse(false);
     }
 
     private String generateUniqueCode() {

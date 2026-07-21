@@ -32,6 +32,11 @@ class SpaceInvitationPersistenceAdapter implements SpaceInvitationPort {
     }
 
     @Override
+    public Optional<SpaceInvitation> findByIdForUpdate(UUID id) {
+        return jpaRepository.findByIdForUpdate(id).map(SpaceInvitationEntity::toDomain);
+    }
+
+    @Override
     public boolean existsPendingBetween(UUID a, UUID b) {
         return jpaRepository.existsPendingBetween(a, b);
     }
