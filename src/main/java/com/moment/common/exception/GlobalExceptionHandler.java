@@ -4,11 +4,14 @@ import com.moment.common.response.ApiResponse;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -42,6 +45,33 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(ErrorCode.INVALID_REQUEST.name(),
                         ErrorCode.INVALID_REQUEST.getMessage()));
+    }
+
+    // 잘못된 UUID 경로/쿼리, 파싱 불가한 날짜 등 타입 변환 실패 → 400
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("type_mismatch param={} value={}", ex.getName(), ex.getValue());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ErrorCode.INVALID_REQUEST.name(),
+                        "요청 값의 형식이 올바르지 않아요."));
+    }
+
+    // 필수 쿼리 파라미터 누락 → 400
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    ResponseEntity<ApiResponse<Void>> handleMissingParam(MissingServletRequestParameterException ex) {
+        log.warn("missing_param name={}", ex.getParameterName());
+        return ResponseEntity.badRequest()
+                .body(ApiResponse.error(ErrorCode.INVALID_REQUEST.name(),
+                        ex.getParameterName() + " 파라미터가 필요해요."));
+    }
+
+    // DB 제약 위반(유니크·NOT NULL 등) → 500 대신 409로 매핑
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    ResponseEntity<ApiResponse<Void>> handleDataIntegrity(DataIntegrityViolationException ex) {
+        log.warn("data_integrity_violation message={}", ex.getMostSpecificCause().getMessage());
+        return ResponseEntity.status(ErrorCode.CONFLICT.getStatus())
+                .body(ApiResponse.error(ErrorCode.CONFLICT.name(),
+                        "요청을 처리할 수 없어요. 잠시 후 다시 시도해 주세요."));
     }
 
     @ExceptionHandler(Exception.class)

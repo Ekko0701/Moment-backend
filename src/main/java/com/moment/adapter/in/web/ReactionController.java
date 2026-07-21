@@ -3,6 +3,7 @@ package com.moment.adapter.in.web;
 import com.moment.adapter.in.web.dto.reaction.ReactionRequest;
 import com.moment.application.port.in.ReactionUseCase;
 import com.moment.common.response.ApiResponse;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -26,7 +27,7 @@ public class ReactionController {
     ApiResponse<Void> react(
             @AuthenticationPrincipal UUID userId,
             @PathVariable UUID momentId,
-            @RequestBody ReactionRequest request) {
+            @Valid @RequestBody ReactionRequest request) {
         reactionUseCase.react(userId, momentId, request.emoji());
         return ApiResponse.ok();
     }

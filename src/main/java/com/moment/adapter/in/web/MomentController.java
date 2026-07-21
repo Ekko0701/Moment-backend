@@ -9,6 +9,7 @@ import com.moment.application.port.in.MomentUseCase.CreateMomentCommand;
 import com.moment.application.port.in.MomentUseCase.MomentView;
 import com.moment.application.port.in.MomentUseCase.TimelinePage;
 import com.moment.common.response.ApiResponse;
+import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -43,7 +44,7 @@ public class MomentController {
     @PostMapping("/moments")
     ApiResponse<MomentResponse> create(
             @AuthenticationPrincipal UUID userId,
-            @RequestBody MomentRequest request) {
+            @Valid @RequestBody MomentRequest request) {
         var command = new CreateMomentCommand(request.spaceId(), request.imageUrl(), request.text());
         var view = momentUseCase.create(userId, command);
         return ApiResponse.ok(buildResponse(view));

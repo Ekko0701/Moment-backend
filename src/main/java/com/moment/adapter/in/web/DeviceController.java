@@ -3,6 +3,7 @@ package com.moment.adapter.in.web;
 import com.moment.adapter.in.web.dto.device.DeviceRequest;
 import com.moment.application.port.in.DeviceUseCase;
 import com.moment.common.response.ApiResponse;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -23,7 +24,7 @@ public class DeviceController {
     @PostMapping
     ApiResponse<Void> register(
             @AuthenticationPrincipal UUID userId,
-            @RequestBody DeviceRequest request) {
+            @Valid @RequestBody DeviceRequest request) {
         deviceUseCase.register(userId, request.apnsToken());
         return ApiResponse.ok();
     }

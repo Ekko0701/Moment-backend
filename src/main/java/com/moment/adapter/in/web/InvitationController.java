@@ -7,6 +7,7 @@ import com.moment.application.port.in.InvitationUseCase;
 import com.moment.application.port.out.UserRepositoryPort;
 import com.moment.common.response.ApiResponse;
 import com.moment.domain.invite.SpaceInvitation;
+import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -76,7 +77,7 @@ public class InvitationController {
     // 204 대신 200 엔벨로프 — 클라이언트가 모든 응답을 ApiResponse로 일관 파싱한다 (DELETE와 동일 규약)
     @PatchMapping("/{id}")
     ApiResponse<Void> respond(@AuthenticationPrincipal UUID userId, @PathVariable UUID id,
-            @RequestBody RespondInvitationRequest request) {
+            @Valid @RequestBody RespondInvitationRequest request) {
         invitationUseCase.respond(userId, id, new InvitationUseCase.RespondCommand(request.action()));
         return ApiResponse.ok();
     }

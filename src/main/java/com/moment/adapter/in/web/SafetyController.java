@@ -4,6 +4,7 @@ import com.moment.adapter.in.web.dto.safety.BlockRequest;
 import com.moment.adapter.in.web.dto.safety.ReportRequest;
 import com.moment.application.port.in.SafetyUseCase;
 import com.moment.common.response.ApiResponse;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,7 +25,7 @@ public class SafetyController {
     @PostMapping("/reports")
     ApiResponse<Void> report(
             @AuthenticationPrincipal UUID userId,
-            @RequestBody ReportRequest request) {
+            @Valid @RequestBody ReportRequest request) {
         safetyUseCase.report(userId, request.momentId(), request.reason(), request.detail());
         return ApiResponse.ok();
     }
@@ -32,7 +33,7 @@ public class SafetyController {
     @PostMapping("/blocks")
     ApiResponse<Void> block(
             @AuthenticationPrincipal UUID userId,
-            @RequestBody BlockRequest request) {
+            @Valid @RequestBody BlockRequest request) {
         safetyUseCase.block(userId, request.targetUserId());
         return ApiResponse.ok();
     }
