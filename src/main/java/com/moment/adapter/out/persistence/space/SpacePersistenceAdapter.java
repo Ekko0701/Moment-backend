@@ -3,6 +3,7 @@ package com.moment.adapter.out.persistence.space;
 import com.moment.application.port.out.SpaceRepositoryPort;
 import com.moment.domain.space.Space;
 import com.moment.domain.space.SpaceMember;
+import com.moment.domain.space.SpaceStatus;
 import com.moment.domain.space.SpaceType;
 import java.util.List;
 import java.util.Optional;
@@ -74,11 +75,16 @@ class SpacePersistenceAdapter implements SpaceRepositoryPort {
 
     @Override
     public boolean existsActiveOneToOneMembership(UUID userId) {
+        // 멤버십(leftAt == null)뿐 아니라 스페이스가 ACTIVE인지도 확인한다.
+        // 비활성 스페이스에 멤버십이 남아 있어도 새 연결을 막지 않도록 하기 위함.
         return memberJpaRepository.findByUserIdAndLeftAtIsNull(userId).stream()
                 .anyMatch(
-                        member -> {
-                            var space = spaceJpaRepository.findById(member.getSpaceId());
-                            return space.isPresent() && space.get().getType() == SpaceType.ONE_TO_ONE;
-                        });
+                        member ->
+                                spaceJpaRepository
+                                        .findById(member.getSpaceId())
+                                        .map(SpaceEntity::toDomain)
+                                        .filter(space -> space.type() == SpaceType.ONE_TO_ONE)
+                                        .filter(space -> space.status() == SpaceStatus.ACTIVE)
+                                        .isPresent());
     }
 }

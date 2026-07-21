@@ -9,6 +9,7 @@ import com.moment.common.exception.BusinessException;
 import com.moment.common.exception.ErrorCode;
 import com.moment.domain.space.Space;
 import com.moment.domain.space.SpaceMember;
+import com.moment.domain.space.SpaceType;
 import com.moment.domain.user.User;
 import java.time.Clock;
 import java.time.Instant;
@@ -85,19 +86,21 @@ public class SpaceService implements SpaceUseCase {
                 .filter(m -> m.userId().equals(meId) && m.isActive())
                 .findFirst()
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
-                        "스페이스에속해있지않아요."));
+                        "스페이스에 속해있지 않아요."));
 
         Instant now = clock.instant();
 
-        SpaceMember left = myMember.leave(now);
-        spaceRepository.saveMember(left);
+        if (space.type() == SpaceType.ONE_TO_ONE) {
+            // 1:1은 한 명이 나가면 스페이스가 종료된다.
+            // 양쪽 멤버십을 모두 종료(leftAt 기록)하고 스페이스를 비활성화해
+            // 멤버십/스페이스 상태를 정합적으로 유지한다. 이렇게 하면 남은 상대도
+            // 비활성 스페이스의 '활성 멤버'로 남지 않아 재연결이 가능해진다.
+            for (SpaceMember member : members) {
+                spaceRepository.saveMember(member.leave(now));
+            }
+            spaceRepository.save(space.deactivate());
 
-        if (space.type().name().equals("ONE_TO_ONE")) {
-            Space deactivated = space.deactivate();
-            spaceRepository.save(deactivated);
-
-            List<SpaceMember> remainingMembers = spaceRepository.findActiveMembersBySpaceId(spaceId);
-            remainingMembers.stream()
+            members.stream()
                     .filter(m -> !m.userId().equals(meId))
                     .forEach(m -> pushPort.send(new PushMessage(
                             m.userId(),
@@ -105,6 +108,9 @@ public class SpaceService implements SpaceUseCase {
                             "연결이 끝났어요",
                             "상대방이 연결을 종료했습니다.",
                             Map.of())));
+        } else {
+            // 그룹 스페이스(향후): 나간 사람만 종료
+            spaceRepository.saveMember(myMember.leave(now));
         }
     }
 }

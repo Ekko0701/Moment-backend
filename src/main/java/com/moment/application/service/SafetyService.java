@@ -101,7 +101,12 @@ public class SafetyService implements SafetyUseCase {
                             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                                     "스페이스를 찾을 수 없어요."));
                     if (space.type() == SpaceType.ONE_TO_ONE) {
-                        // 스페이스 비활성화
+                        // 양쪽 멤버십을 모두 종료하고 스페이스를 비활성화한다.
+                        // (나가기와 동일하게 멤버십/스페이스 상태를 정합적으로 유지)
+                        for (SpaceMember member :
+                                spaceRepository.findActiveMembersBySpaceId(space.id())) {
+                            spaceRepository.saveMember(member.leave(now));
+                        }
                         Space deactivated = space.deactivate();
                         spaceRepository.save(deactivated);
 
