@@ -1,6 +1,7 @@
 package com.moment.adapter.in.web.security;
 
 import com.moment.application.port.out.TokenPort;
+import com.moment.application.port.out.UserRepositoryPort;
 import com.moment.common.exception.BusinessException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -25,9 +26,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String BEARER_PREFIX = "Bearer ";
 
     private final TokenPort tokenPort;
+    private final UserRepositoryPort userRepository;
 
-    public JwtAuthenticationFilter(TokenPort tokenPort) {
+    public JwtAuthenticationFilter(TokenPort tokenPort, UserRepositoryPort userRepository) {
         this.tokenPort = tokenPort;
+        this.userRepository = userRepository;
     }
 
     @Override
@@ -38,9 +41,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             String token = header.substring(BEARER_PREFIX.length());
             try {
                 UUID userId = tokenPort.parseUserId(token);
-                var authentication = new UsernamePasswordAuthenticationToken(
-                        userId, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                // 서명·만료가 유효해도 사용자가 여전히 활성 상태인지 확인한다.
+                // 탈퇴/정지 계정의 남은 Access Token(최대 30분 유효)으로 요청하는 것을 차단.
+                boolean active = userRepository.findById(userId)
+                        .map(user -> user.isActive())
+                        .orElse(false);
+                if (active) {
+                    var authentication = new UsernamePasswordAuthenticationToken(
+                            userId, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                } else {
+                    SecurityContextHolder.clearContext();
+                }
             } catch (BusinessException ignored) {
                 // 유효하지 않은 토큰은 미인증으로 통과시키고, 보호 자원 접근 시 401로 응답된다.
                 SecurityContextHolder.clearContext();
