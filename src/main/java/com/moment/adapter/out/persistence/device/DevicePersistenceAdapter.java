@@ -16,7 +16,10 @@ class DevicePersistenceAdapter implements DevicePort {
 
     @Override
     public Device upsert(Device device) {
-        DeviceEntity entity = jpaRepository.findById(device.id())
+        // apnsToken이 유니크 키다. 같은 토큰이 이미 있으면 소유자/갱신시각만 업데이트하고,
+        // 없으면 새로 삽입한다. (id로 조회하면 매 등록마다 새 UUID라 항상 삽입되어
+        // 유니크 제약 위반 500이 발생하던 문제를 해결)
+        DeviceEntity entity = jpaRepository.findByApnsToken(device.apnsToken())
                 .map(existing -> {
                     existing.applyDomain(device);
                     return existing;

@@ -2,6 +2,7 @@ package com.moment.application.service;
 
 import com.moment.application.port.in.AuthUseCase;
 import com.moment.application.port.out.AppleAuthPort;
+import com.moment.application.port.out.DevicePort;
 import com.moment.application.port.out.PasswordHasherPort;
 import com.moment.application.port.out.RefreshTokenPort;
 import com.moment.application.port.out.TokenPort;
@@ -37,6 +38,7 @@ public class AuthService implements AuthUseCase {
     private final PasswordHasherPort passwordHasher;
     private final RefreshTokenPort refreshTokenPort;
     private final TokenPort tokenPort;
+    private final DevicePort devicePort;
     private final HandleGenerator handleGenerator;
     private final MomentProperties properties;
     private final Clock clock;
@@ -44,12 +46,14 @@ public class AuthService implements AuthUseCase {
 
     public AuthService(AppleAuthPort appleAuthPort, UserRepositoryPort userRepository,
             PasswordHasherPort passwordHasher, RefreshTokenPort refreshTokenPort, TokenPort tokenPort,
-            HandleGenerator handleGenerator, MomentProperties properties, Clock clock) {
+            DevicePort devicePort, HandleGenerator handleGenerator, MomentProperties properties,
+            Clock clock) {
         this.appleAuthPort = appleAuthPort;
         this.userRepository = userRepository;
         this.passwordHasher = passwordHasher;
         this.refreshTokenPort = refreshTokenPort;
         this.tokenPort = tokenPort;
+        this.devicePort = devicePort;
         this.handleGenerator = handleGenerator;
         this.properties = properties;
         this.clock = clock;
@@ -118,6 +122,8 @@ public class AuthService implements AuthUseCase {
     @Override
     public void logout(UUID userId) {
         refreshTokenPort.deleteAllByUserId(userId);
+        // 로그아웃 시 디바이스(APNs) 토큰도 폐기해 이전 계정으로 푸시가 가지 않도록 한다.
+        devicePort.deleteAllByUserId(userId);
     }
 
     private User signUpWithApple(String appleSub, String nickname) {

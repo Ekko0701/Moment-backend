@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.moment.application.port.in.AuthUseCase.LoginResult;
 import com.moment.application.port.in.AuthUseCase.TokenPair;
 import com.moment.application.port.out.AppleAuthPort;
+import com.moment.application.port.out.DevicePort;
 import com.moment.application.port.out.PasswordHasherPort;
 import com.moment.application.port.out.RefreshTokenPort;
 import com.moment.application.port.out.TokenPort;
@@ -49,6 +50,8 @@ class AuthServiceTest {
     @Mock
     private TokenPort tokenPort;
     @Mock
+    private DevicePort devicePort;
+    @Mock
     private HandleGenerator handleGenerator;
 
     private AuthService authService;
@@ -61,7 +64,7 @@ class AuthServiceTest {
                 new MomentProperties.Invite(Duration.ofHours(24), Duration.ofHours(72)),
                 new MomentProperties.Policy(true));
         authService = new AuthService(appleAuthPort, userRepository, passwordHasher,
-                refreshTokenPort, tokenPort, handleGenerator, properties,
+                refreshTokenPort, tokenPort, devicePort, handleGenerator, properties,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
