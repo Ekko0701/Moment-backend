@@ -5,7 +5,6 @@ import com.moment.application.port.in.SpaceUseCase;
 import com.moment.common.response.ApiResponse;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -45,8 +44,8 @@ public class SpaceController {
     }
 
     @DeleteMapping("/{spaceId}/members/me")
-    ResponseEntity<Void> leave(@AuthenticationPrincipal UUID userId, @PathVariable UUID spaceId) {
+    ApiResponse<Void> leave(@AuthenticationPrincipal UUID userId, @PathVariable UUID spaceId) {
         spaceUseCase.leave(userId, spaceId);
-        return ResponseEntity.noContent().build();
+        return ApiResponse.ok();
     }
 }
