@@ -1,12 +1,13 @@
 package com.moment.adapter.out.push;
 
-import com.moment.application.port.out.PushPort;
+import com.moment.application.port.out.PushPort.PushMessage;
+import com.moment.application.port.out.PushSender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
-class LoggingPushAdapter implements PushPort {
+class LoggingPushAdapter implements PushSender {
 
     private static final Logger logger = LoggerFactory.getLogger(LoggingPushAdapter.class);
 
