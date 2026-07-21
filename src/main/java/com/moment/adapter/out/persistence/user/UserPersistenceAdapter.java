@@ -39,6 +39,11 @@ class UserPersistenceAdapter implements UserRepositoryPort {
     }
 
     @Override
+    public List<User> lockAllByIdsForUpdate(List<UUID> ids) {
+        return jpaRepository.lockAllByIdOrdered(ids).stream().map(UserEntity::toDomain).toList();
+    }
+
+    @Override
     public Optional<User> findByAppleSub(String appleSub) {
         return jpaRepository.findByAppleSub(appleSub).map(UserEntity::toDomain);
     }

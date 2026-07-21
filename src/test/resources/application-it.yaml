@@ -1,0 +1,16 @@
+# 통합 테스트(PostgreSQL/Testcontainers) 전용 프로필.
+# 데이터소스는 @DynamicPropertySource가 컨테이너로부터 주입한다.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  h2:
+    console:
+      enabled: false
+
+moment:
+  jwt:
+    secret: it-only-secret-key-0123456789abcdef0123456789
+  auth:
+    apple:
+      mode: stub

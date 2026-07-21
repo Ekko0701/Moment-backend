@@ -219,6 +219,11 @@ public class InvitationService implements InvitationUseCase {
 
         UUID fromUserId = invitation.fromUserId();
 
+        // 두 참여자 행을 id 순서로 잠근다. 초대 행 잠금만으로는 서로 다른 초대(A→B, C→B)가
+        // 같은 사용자 B에서 서로를 막지 못한다. 사용자 행을 잠가야 B를 공유하는 동시 수락이
+        // 직렬화되어 1인 1스페이스 불변식이 유지된다. (쿼리가 id 순서로 잠가 데드락 회피)
+        userRepository.lockAllByIdsForUpdate(List.of(meId, fromUserId));
+
         // 양쪽 계정이 모두 활성 상태여야 한다 (탈퇴/정지 계정과는 연결 불가).
         if (!isActiveUser(meId) || !isActiveUser(fromUserId)) {
             throw new BusinessException(ErrorCode.NOT_FOUND,

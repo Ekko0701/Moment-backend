@@ -58,8 +58,30 @@ dependencies {
     testImplementation 'org.springframework.boot:spring-boot-test'
     testImplementation 'org.springframework.security:spring-security-test'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // 통합 테스트 — PostgreSQL 동시성 검증 (Testcontainers, CI 전용)
+    testImplementation platform('org.testcontainers:testcontainers-bom:1.20.4')
+    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+    testImplementation 'org.testcontainers:junit-jupiter'
+    testImplementation 'org.testcontainers:postgresql'
 }
 
+// 기본 test: 빠른 단위·H2 테스트만. integration 태그는 제외한다(로컬에 Docker 불필요).
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags 'integration'
+    }
+}
+
+// integrationTest: PostgreSQL(Testcontainers) 동시성 테스트. CI의 별도 잡에서 실행한다.
+// Docker가 없으면 컨테이너 기동이 실패하며 태스크도 실패한다(조용히 스킵하지 않음).
+tasks.register('integrationTest', Test) {
+    description = 'Runs PostgreSQL integration/concurrency tests (requires Docker).'
+    group = 'verification'
+    useJUnitPlatform {
+        includeTags 'integration'
+    }
+    shouldRunAfter tasks.named('test')
+    testClassesDirs = sourceSets.test.output.classesDirs
+    classpath = sourceSets.test.runtimeClasspath
 }
