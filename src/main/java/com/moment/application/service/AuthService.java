@@ -32,6 +32,8 @@ public class AuthService implements AuthUseCase {
     private static final String DEFAULT_NICKNAME = "모먼트";
     private static final int REFRESH_TOKEN_BYTES = 32;
     private static final int MIN_PASSWORD_LENGTH = 8;
+    // BCrypt는 72바이트 이후를 잘라내며, 과도하게 긴 입력은 해싱 비용 DoS 벡터가 된다.
+    private static final int MAX_PASSWORD_LENGTH = 72;
 
     private final AppleAuthPort appleAuthPort;
     private final UserRepositoryPort userRepository;
@@ -72,7 +74,8 @@ public class AuthService implements AuthUseCase {
     }
 
     @Override
-    public LoginResult signUpWithEmail(String email, String rawPassword, String nickname) {
+    public LoginResult signUpWithEmail(String rawEmail, String rawPassword, String nickname) {
+        String email = normalizeEmail(rawEmail);
         User.validateEmail(email);
         validatePassword(rawPassword);
         User.validateNickname(nickname);
@@ -90,7 +93,8 @@ public class AuthService implements AuthUseCase {
     }
 
     @Override
-    public TokenPair loginWithEmail(String email, String rawPassword) {
+    public TokenPair loginWithEmail(String rawEmail, String rawPassword) {
+        String email = normalizeEmail(rawEmail);
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException(ErrorCode.UNAUTHORIZED,
                         "이메일 또는 비밀번호가 올바르지 않아요."));
@@ -154,6 +158,15 @@ public class AuthService implements AuthUseCase {
             throw new BusinessException(ErrorCode.INVALID_REQUEST,
                     "비밀번호는 8자 이상이어야 해요.");
         }
+        if (rawPassword.length() > MAX_PASSWORD_LENGTH) {
+            throw new BusinessException(ErrorCode.INVALID_REQUEST,
+                    "비밀번호는 72자 이하여야 해요.");
+        }
+    }
+
+    // 이메일을 소문자·trim으로 정규화해 대소문자 차이로 인한 중복 계정·로그인 불일치를 막는다.
+    private static String normalizeEmail(String email) {
+        return email == null ? null : email.strip().toLowerCase(java.util.Locale.ROOT);
     }
 
     static String sha256(String value) {
