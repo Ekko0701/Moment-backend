@@ -98,10 +98,12 @@ public class UserService implements UserUseCase {
                 Space deactivated = space.deactivate();
                 spaceRepository.save(deactivated);
 
-                // 남은 활성 멤버에게 푸시
+                // 남은 멤버십도 종료해 멤버십/스페이스 상태를 정합적으로 유지한다.
+                // (상대가 비활성 스페이스의 활성 멤버로 남아 계속 접근하는 것을 막음 — 나가기/차단과 동일)
                 List<SpaceMember> activeMembers = spaceRepository.findActiveMembersBySpaceId(space.id());
                 for (SpaceMember activeMem : activeMembers) {
                     if (!activeMem.userId().equals(userId)) {
+                        spaceRepository.saveMember(activeMem.leave(now));
                         pushPort.send(new PushMessage(
                                 activeMem.userId(),
                                 "SPACE_DEACTIVATED",

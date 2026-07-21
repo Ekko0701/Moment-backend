@@ -185,6 +185,87 @@ class MomentE2eTest {
     }
 
     @Test
+    @DisplayName("회원 탈퇴 후: 본인 토큰 무효화 + 상대방의 스페이스·타임라인 접근 차단")
+    void withdrawal_revokesSelfAndPartnerAccess() {
+        UUID space = connectAAndB();
+
+        // A가 회원 탈퇴
+        String deleteResp = client.delete()
+                .uri("/v1/users/me")
+                .header("Authorization", "Bearer " + tokenA)
+                .retrieve()
+                .body(String.class);
+        assertSuccess(deleteResp);
+
+        // 1) 탈퇴한 A의 Access Token은 더 이상 통하지 않는다 (계정 비활성)
+        String meResp = client.get()
+                .uri("/v1/users/me")
+                .header("Authorization", "Bearer " + tokenA)
+                .retrieve()
+                .body(String.class);
+        assertThat(extractRoot(meResp).get("success")).isEqualTo(false);
+
+        // 2) 상대방 B의 스페이스 목록에서 해당 스페이스가 사라진다
+        String spacesResp = client.get()
+                .uri("/v1/spaces/me")
+                .header("Authorization", "Bearer " + tokenB)
+                .retrieve()
+                .body(String.class);
+        var spaces = (List<?>) extractRoot(spacesResp).get("data");
+        assertThat(spaces).isEmpty();
+
+        // 3) 상대방 B는 더 이상 해당 스페이스 타임라인에 접근할 수 없다 (비멤버)
+        String timelineResp = client.get()
+                .uri("/v1/spaces/{id}/moments", space)
+                .header("Authorization", "Bearer " + tokenB)
+                .retrieve()
+                .body(String.class);
+        assertThat(extractRoot(timelineResp).get("success")).isEqualTo(false);
+    }
+
+    // A와 B를 연결하고 생성된 스페이스 ID를 반환한다.
+    private UUID connectAAndB() {
+        String codeResp = client.post()
+                .uri("/v1/invite-codes")
+                .header("Authorization", "Bearer " + tokenA)
+                .retrieve()
+                .body(String.class);
+        String code = extractFromData(codeResp, "code");
+
+        assertSuccess(client.post()
+                .uri("/v1/invitations")
+                .header("Authorization", "Bearer " + tokenB)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"toUserId\":null,\"code\":\"" + code + "\"}")
+                .retrieve()
+                .body(String.class));
+
+        String invListResp = client.get()
+                .uri("/v1/invitations?received=true")
+                .header("Authorization", "Bearer " + tokenA)
+                .retrieve()
+                .body(String.class);
+        var invList = (List<?>) extractRoot(invListResp).get("data");
+        String invId = (String) mapper.convertValue(invList.get(0), Map.class).get("id");
+
+        assertSuccess(client.patch()
+                .uri("/v1/invitations/{id}", invId)
+                .header("Authorization", "Bearer " + tokenA)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body("{\"action\":\"accept\"}")
+                .retrieve()
+                .body(String.class));
+
+        String spacesResp = client.get()
+                .uri("/v1/spaces/me")
+                .header("Authorization", "Bearer " + tokenA)
+                .retrieve()
+                .body(String.class);
+        var spaces = (List<?>) extractRoot(spacesResp).get("data");
+        return UUID.fromString((String) mapper.convertValue(spaces.get(0), Map.class).get("id"));
+    }
+
+    @Test
     @DisplayName("Security: 401 unauthenticated access")
     void security_unauthenticatedForbidden() {
         String resp = client.get()

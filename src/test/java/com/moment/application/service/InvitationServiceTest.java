@@ -1,5 +1,6 @@
 package com.moment.application.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -36,6 +37,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -95,6 +97,26 @@ class InvitationServiceTest {
                 .extracting(ex -> ((BusinessException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.CONFLICT);
 
+        verify(spaceRepository, never()).save(any(Space.class));
+    }
+
+    @Test
+    @DisplayName("TTL 경과: 만료된 PENDING 초대는 수락 시 만료 처리되고 거부된다(재초대 가능 상태로)")
+    void accept_expiredPending_expiresAndRejects() {
+        // 생성 후 73시간 경과 (TTL 72h 초과)
+        SpaceInvitation stale = new SpaceInvitation(UUID.randomUUID(), fromUserId, meId,
+                InvitationVia.CODE, InvitationStatus.PENDING, NOW.minus(Duration.ofHours(73)), null);
+        when(invitationPort.findByIdForUpdate(stale.id())).thenReturn(Optional.of(stale));
+
+        assertThatThrownBy(() -> service.respond(meId, stale.id(), new RespondCommand("accept")))
+                .isInstanceOf(BusinessException.class)
+                .extracting(ex -> ((BusinessException) ex).getErrorCode())
+                .isEqualTo(ErrorCode.INVALID_REQUEST);
+
+        // 만료 상태로 저장되고, 스페이스는 생성되지 않는다 → 이후 재초대가 가능한 상태
+        ArgumentCaptor<SpaceInvitation> captor = ArgumentCaptor.forClass(SpaceInvitation.class);
+        verify(invitationPort).save(captor.capture());
+        assertThat(captor.getValue().status()).isEqualTo(InvitationStatus.EXPIRED);
         verify(spaceRepository, never()).save(any(Space.class));
     }
 
