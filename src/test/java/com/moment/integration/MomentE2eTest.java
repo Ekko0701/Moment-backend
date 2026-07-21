@@ -55,11 +55,15 @@ class MomentE2eTest {
                 .defaultStatusHandler(status -> true, (req, res) -> {})
                 .build();
 
+        // 테스트 메서드마다 고유 사용자를 쓴다 — H2가 클래스 전체에서 공유되므로
+        // 고정 토큰을 쓰면 앞선 테스트가 만든 스페이스/연결이 다음 테스트를 오염시킨다.
+        String runId = UUID.randomUUID().toString();
+
         // 1. User A login
         String respA = client.post()
                 .uri("/v1/auth/apple")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body("{\"identityToken\":\"user-a\",\"nickname\":\"에이\"}")
+                .body("{\"identityToken\":\"user-a-" + runId + "\",\"nickname\":\"에이\"}")
                 .retrieve()
                 .body(String.class);
         tokenA = extractToken(respA);
@@ -68,7 +72,7 @@ class MomentE2eTest {
         String respB = client.post()
                 .uri("/v1/auth/apple")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body("{\"identityToken\":\"user-b\",\"nickname\":\"비비\"}")
+                .body("{\"identityToken\":\"user-b-" + runId + "\",\"nickname\":\"비비\"}")
                 .retrieve()
                 .body(String.class);
         tokenB = extractToken(respB);
@@ -77,7 +81,7 @@ class MomentE2eTest {
         String respC = client.post()
                 .uri("/v1/auth/apple")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body("{\"identityToken\":\"user-c\",\"nickname\":\"씨씨\"}")
+                .body("{\"identityToken\":\"user-c-" + runId + "\",\"nickname\":\"씨씨\"}")
                 .retrieve()
                 .body(String.class);
         tokenC = extractToken(respC);
@@ -96,13 +100,14 @@ class MomentE2eTest {
         String code = extractFromData(codeResp, "code");
 
         // 2. B sends invitation via code
-        client.post()
+        String sendResp = client.post()
                 .uri("/v1/invitations")
                 .header("Authorization", "Bearer " + tokenB)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"toUserId\":null,\"code\":\"" + code + "\"}")
                 .retrieve()
                 .body(String.class);
+        assertSuccess(sendResp);
 
         // 3. A receives invitation
         String invListResp = client.get()
@@ -117,13 +122,14 @@ class MomentE2eTest {
         String invId = (String) inv.get("id");
 
         // 4. A accepts invitation
-        client.patch()
+        String acceptResp = client.patch()
                 .uri("/v1/invitations/{id}", invId)
                 .header("Authorization", "Bearer " + tokenA)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"action\":\"accept\"}")
                 .retrieve()
                 .body(String.class);
+        assertSuccess(acceptResp);
 
         // 5. Verify space created
         String spacesResp = client.get()
@@ -144,6 +150,7 @@ class MomentE2eTest {
                 .body("{\"spaceId\":\"" + spaceId + "\",\"text\":\"첫 순간\"}")
                 .retrieve()
                 .body(String.class);
+        assertSuccess(createResp);
         momentId = UUID.fromString(extractFromData(createResp, "id"));
 
         // 7. B sees timeline
@@ -156,13 +163,14 @@ class MomentE2eTest {
         assertThat(moments).hasSize(1);
 
         // 8. B adds reaction
-        client.put()
+        String reactionResp = client.put()
                 .uri("/v1/moments/{id}/reaction", momentId)
                 .header("Authorization", "Bearer " + tokenB)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body("{\"emoji\":\"❤️\"}")
                 .retrieve()
                 .body(String.class);
+        assertSuccess(reactionResp);
 
         // 9. Verify reaction in timeline
         String timelineResp2 = client.get()
@@ -270,6 +278,14 @@ class MomentE2eTest {
 
     private String extractFromData(String json, String key) {
         return (String) extractData(json).get(key);
+    }
+
+    // 변경 요청 응답이 실제로 성공(success=true)했는지 검증한다.
+    // (모든 오류를 삼키는 status handler 때문에 중간 실패가 조용히 통과하는 것을 방지)
+    private void assertSuccess(String json) {
+        assertThat(extractRoot(json).get("success"))
+                .as("API response should be successful: %s", json)
+                .isEqualTo(true);
     }
 
     private Map<String, Object> extractData(String json) {
