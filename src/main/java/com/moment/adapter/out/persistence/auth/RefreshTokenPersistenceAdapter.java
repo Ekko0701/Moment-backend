@@ -5,6 +5,7 @@ import com.moment.domain.auth.RefreshToken;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 class RefreshTokenPersistenceAdapter implements RefreshTokenPort {
@@ -23,6 +24,12 @@ class RefreshTokenPersistenceAdapter implements RefreshTokenPort {
     @Override
     public Optional<RefreshToken> findByTokenHash(String tokenHash) {
         return jpaRepository.findByTokenHash(tokenHash).map(RefreshTokenEntity::toDomain);
+    }
+
+    @Override
+    @Transactional
+    public int deleteByTokenHash(String tokenHash) {
+        return jpaRepository.deleteByTokenHash(tokenHash);
     }
 
     @Override

@@ -185,11 +185,12 @@ class AuthServiceTest {
                 AuthService.sha256("old-refresh"), NOW.plus(Duration.ofDays(1)), NOW);
         when(refreshTokenPort.findByTokenHash(AuthService.sha256("old-refresh")))
                 .thenReturn(Optional.of(stored));
+        when(refreshTokenPort.deleteByTokenHash(AuthService.sha256("old-refresh"))).thenReturn(1);
         when(tokenPort.createAccessToken(userId)).thenReturn("new-access");
 
         var pair = authService.refresh("old-refresh");
 
-        verify(refreshTokenPort).deleteById(stored.id());
+        verify(refreshTokenPort).deleteByTokenHash(AuthService.sha256("old-refresh"));
         verify(refreshTokenPort).save(any(RefreshToken.class));
         assertThat(pair.accessToken()).isEqualTo("new-access");
     }
@@ -200,12 +201,13 @@ class AuthServiceTest {
         RefreshToken expired = new RefreshToken(UUID.randomUUID(), UUID.randomUUID(),
                 AuthService.sha256("old-refresh"), NOW.minus(Duration.ofSeconds(1)), NOW);
         when(refreshTokenPort.findByTokenHash(anyString())).thenReturn(Optional.of(expired));
+        when(refreshTokenPort.deleteByTokenHash(anyString())).thenReturn(1);
 
         assertThatThrownBy(() -> authService.refresh("old-refresh"))
                 .isInstanceOf(BusinessException.class)
                 .extracting(ex -> ((BusinessException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_TOKEN);
-        verify(refreshTokenPort).deleteById(expired.id());
+        verify(refreshTokenPort).deleteByTokenHash(anyString());
         verify(refreshTokenPort, never()).save(any(RefreshToken.class));
     }
 

@@ -112,7 +112,11 @@ public class AuthService implements AuthUseCase {
         String hash = sha256(refreshToken);
         RefreshToken stored = refreshTokenPort.findByTokenHash(hash)
                 .orElseThrow(() -> new BusinessException(ErrorCode.INVALID_TOKEN));
-        refreshTokenPort.deleteById(stored.id());
+        // 조건부 삭제로 원자적 소비 — 삭제된 행이 0이면 다른 요청이 이미 소비한 것이므로
+        // (동시 요청 시 양쪽이 각각 새 토큰을 발급받던 문제) 재사용을 거부한다.
+        if (refreshTokenPort.deleteByTokenHash(hash) == 0) {
+            throw new BusinessException(ErrorCode.INVALID_TOKEN);
+        }
         if (stored.isExpired(clock.instant())) {
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
