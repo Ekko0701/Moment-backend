@@ -120,7 +120,9 @@ public class InvitationService implements InvitationUseCase {
                     "이미 연결된 상대가 있어요.");
         }
 
-        if (invitationPort.existsPendingBetween(meId, targetUserId)) {
+        // TTL이 지난 PENDING은 차단 근거가 아니다 (상태 마킹은 rollback될 수 있으므로 조회로 판정)
+        if (invitationPort.existsPendingBetween(meId, targetUserId,
+                now.minus(properties.invite().invitationTtl()))) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "이미 대기 중인 요청이 있어요.");
         }
@@ -165,13 +167,13 @@ public class InvitationService implements InvitationUseCase {
         List<SpaceInvitation> invitations = invitationPort.findAllByUser(meId, received);
 
         Instant now = clock.instant();
+        // readOnly 트랜잭션이므로 상태를 저장하지 않고 표시용으로만 EXPIRED로 매핑한다.
+        // (readOnly에서의 save는 flush되지 않을 수 있고, 조회 경로가 쓰기를 하는 것도 부적절)
         invitations = invitations.stream()
                 .map(inv -> {
                     if (inv.status() == InvitationStatus.PENDING
                             && inv.isExpiredBy(now, properties.invite().invitationTtl())) {
-                        SpaceInvitation expired = inv.expire(now);
-                        invitationPort.save(expired);
-                        return expired;
+                        return inv.expire(now);
                     }
                     return inv;
                 })
@@ -190,8 +192,9 @@ public class InvitationService implements InvitationUseCase {
         Instant now = clock.instant();
         if (invitation.status() == InvitationStatus.PENDING
                 && invitation.isExpiredBy(now, properties.invite().invitationTtl())) {
-            invitation = invitation.expire(now);
-            invitationPort.save(invitation);
+            // 주의: 여기서 EXPIRED를 저장하면 아래 예외로 트랜잭션이 rollback되어 저장이 취소된다.
+            // 만료 판정은 조회 시점의 TTL 계산으로 충분하므로 상태 저장 없이 거부만 한다.
+            // (실제 EXPIRED 마킹은 수락 성공 트랜잭션의 일괄 만료 처리에서 커밋과 함께 이뤄진다)
             throw new BusinessException(ErrorCode.INVALID_REQUEST,
                     "만료된 요청이에요.");
         }

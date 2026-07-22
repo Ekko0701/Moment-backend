@@ -37,8 +37,8 @@ class SpaceInvitationPersistenceAdapter implements SpaceInvitationPort {
     }
 
     @Override
-    public boolean existsPendingBetween(UUID a, UUID b) {
-        return jpaRepository.existsPendingBetween(a, b);
+    public boolean existsPendingBetween(UUID a, UUID b, Instant since) {
+        return jpaRepository.existsPendingBetween(a, b, since);
     }
 
     @Override

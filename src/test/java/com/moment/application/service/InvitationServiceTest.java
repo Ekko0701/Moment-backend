@@ -101,8 +101,8 @@ class InvitationServiceTest {
     }
 
     @Test
-    @DisplayName("TTL 경과: 만료된 PENDING 초대는 수락 시 만료 처리되고 거부된다(재초대 가능 상태로)")
-    void accept_expiredPending_expiresAndRejects() {
+    @DisplayName("TTL 경과: 만료된 PENDING 초대는 저장 없이 거부된다 (저장하면 예외 rollback으로 취소됨)")
+    void accept_expiredPending_rejectsWithoutSave() {
         // 생성 후 73시간 경과 (TTL 72h 초과)
         SpaceInvitation stale = new SpaceInvitation(UUID.randomUUID(), fromUserId, meId,
                 InvitationVia.CODE, InvitationStatus.PENDING, NOW.minus(Duration.ofHours(73)), null);
@@ -113,11 +113,38 @@ class InvitationServiceTest {
                 .extracting(ex -> ((BusinessException) ex).getErrorCode())
                 .isEqualTo(ErrorCode.INVALID_REQUEST);
 
-        // 만료 상태로 저장되고, 스페이스는 생성되지 않는다 → 이후 재초대가 가능한 상태
-        ArgumentCaptor<SpaceInvitation> captor = ArgumentCaptor.forClass(SpaceInvitation.class);
-        verify(invitationPort).save(captor.capture());
-        assertThat(captor.getValue().status()).isEqualTo(InvitationStatus.EXPIRED);
+        // 예외로 트랜잭션이 rollback되므로 상태 저장에 의존하지 않는다 — 저장 자체가 없어야 한다.
+        // 재초대 가능 여부는 existsPendingBetween의 TTL 조건이 보장한다.
+        verify(invitationPort, never()).save(any(SpaceInvitation.class));
         verify(spaceRepository, never()).save(any(Space.class));
+    }
+
+    @Test
+    @DisplayName("TTL이 지난 PENDING이 남아 있어도 새 초대 발송을 막지 않는다 (조회에 TTL 조건)")
+    void send_stalePendingDoesNotBlock() {
+        UUID targetId = UUID.randomUUID();
+        // TTL 조건이 포함된 조회가 false를 반환하는 상황 (stale PENDING만 존재)
+        when(spaceRepository.existsActiveOneToOneMembership(meId)).thenReturn(false);
+        when(blockPort.existsBlockBetween(meId, targetId)).thenReturn(false);
+        when(invitationPort.existsPendingBetween(
+                org.mockito.ArgumentMatchers.eq(meId),
+                org.mockito.ArgumentMatchers.eq(targetId),
+                any(Instant.class))).thenReturn(false);
+        when(invitationPort.existsDeclinedBetweenSince(
+                org.mockito.ArgumentMatchers.eq(meId),
+                org.mockito.ArgumentMatchers.eq(targetId),
+                any(Instant.class))).thenReturn(false);
+        when(invitationPort.countByFromUserIdSince(
+                org.mockito.ArgumentMatchers.eq(meId), any(Instant.class))).thenReturn(0);
+
+        service.send(meId, new com.moment.application.port.in.InvitationUseCase.SendCommand(targetId, null));
+
+        // TTL 파라미터가 전달된 조회로 판정하고, 새 초대가 저장된다
+        verify(invitationPort).existsPendingBetween(
+                org.mockito.ArgumentMatchers.eq(meId),
+                org.mockito.ArgumentMatchers.eq(targetId),
+                any(Instant.class));
+        verify(invitationPort).save(any(SpaceInvitation.class));
     }
 
     @Test

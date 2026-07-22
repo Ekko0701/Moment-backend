@@ -26,8 +26,10 @@ interface SpaceInvitationJpaRepository extends JpaRepository<SpaceInvitationEnti
     @Query("SELECT e FROM SpaceInvitationEntity e WHERE e.fromUserId = :userId ORDER BY e.createdAt DESC")
     List<SpaceInvitationEntity> findByFromUserIdOrderByCreatedAtDesc(@Param("userId") UUID userId);
 
-    @Query("SELECT CASE WHEN EXISTS (SELECT 1 FROM SpaceInvitationEntity e WHERE ((e.fromUserId = :a AND e.toUserId = :b) OR (e.fromUserId = :b AND e.toUserId = :a)) AND e.status = 'PENDING') THEN true ELSE false END")
-    boolean existsPendingBetween(@Param("a") UUID a, @Param("b") UUID b);
+    // TTL 조건을 조회에 포함한다 — 만료 상태 저장(EXPIRED 마킹)에 의존하면 예외 rollback으로
+    // PENDING이 남아 재초대를 영구히 막을 수 있으므로, "유효한 PENDING"만 차단 근거로 삼는다.
+    @Query("SELECT CASE WHEN EXISTS (SELECT 1 FROM SpaceInvitationEntity e WHERE ((e.fromUserId = :a AND e.toUserId = :b) OR (e.fromUserId = :b AND e.toUserId = :a)) AND e.status = 'PENDING' AND e.createdAt > :since) THEN true ELSE false END")
+    boolean existsPendingBetween(@Param("a") UUID a, @Param("b") UUID b, @Param("since") Instant since);
 
     @Query("SELECT CASE WHEN EXISTS (SELECT 1 FROM SpaceInvitationEntity e WHERE e.fromUserId = :from AND e.toUserId = :to AND e.status = 'DECLINED' AND e.createdAt > :since) THEN true ELSE false END")
     boolean existsDeclinedBetweenSince(@Param("from") UUID from, @Param("to") UUID to, @Param("since") Instant since);
