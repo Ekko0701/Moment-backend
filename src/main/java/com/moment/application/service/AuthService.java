@@ -32,8 +32,9 @@ public class AuthService implements AuthUseCase {
     private static final String DEFAULT_NICKNAME = "모먼트";
     private static final int REFRESH_TOKEN_BYTES = 32;
     private static final int MIN_PASSWORD_LENGTH = 8;
-    // BCrypt는 72바이트 이후를 잘라내며, 과도하게 긴 입력은 해싱 비용 DoS 벡터가 된다.
-    private static final int MAX_PASSWORD_LENGTH = 72;
+    // BCrypt는 UTF-8 기준 72바이트 이후를 잘라낸다 (한글은 글자당 3바이트).
+    // 문자 수가 아니라 바이트 길이로 제한해야 절삭·해싱 비용 문제를 정확히 막는다.
+    private static final int MAX_PASSWORD_BYTES = 72;
 
     private final AppleAuthPort appleAuthPort;
     private final UserRepositoryPort userRepository;
@@ -112,6 +113,9 @@ public class AuthService implements AuthUseCase {
     }
 
     @Override
+    // noRollbackFor: 만료 토큰을 삭제한 뒤 INVALID_TOKEN을 던질 때 rollback으로 삭제가
+    // 취소되지 않도록 한다. 이 메서드의 다른 예외 경로는 쓰기 전에 발생하므로 안전하다.
+    @Transactional(noRollbackFor = BusinessException.class)
     public TokenPair refresh(String refreshToken) {
         String hash = sha256(refreshToken);
         RefreshToken stored = refreshTokenPort.findByTokenHash(hash)
@@ -158,9 +162,9 @@ public class AuthService implements AuthUseCase {
             throw new BusinessException(ErrorCode.INVALID_REQUEST,
                     "비밀번호는 8자 이상이어야 해요.");
         }
-        if (rawPassword.length() > MAX_PASSWORD_LENGTH) {
+        if (rawPassword.getBytes(StandardCharsets.UTF_8).length > MAX_PASSWORD_BYTES) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST,
-                    "비밀번호는 72자 이하여야 해요.");
+                    "비밀번호가 너무 길어요.");
         }
     }
 
