@@ -10,6 +10,7 @@ public record ReportRequest(
         UUID momentId,
         @NotNull(message = "신고 사유는 필수입니다.")
         ReportReason reason,
-        @Size(max = 1000, message = "상세 사유가 너무 깁니다.")
+        // DB 컬럼(reports.detail VARCHAR(500))과 일치시켜 무결성 오류 대신 400을 낸다
+        @Size(max = 500, message = "상세 사유는 500자 이하로 입력해 주세요.")
         String detail) {
 }
