@@ -7,6 +7,7 @@ import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.PushPort.PushMessage;
 import com.moment.application.port.out.ReportPort;
 import com.moment.application.port.out.SpaceRepositoryPort;
+import com.moment.application.port.out.UserRepositoryPort;
 import com.moment.common.exception.BusinessException;
 import com.moment.common.exception.ErrorCode;
 import com.moment.domain.moment.Moment;
@@ -32,6 +33,7 @@ public class SafetyService implements SafetyUseCase {
     private final BlockPort blockRepository;
     private final MomentRepositoryPort momentRepository;
     private final SpaceRepositoryPort spaceRepository;
+    private final UserRepositoryPort userRepository;
     private final PushPort pushPort;
     private final Clock clock;
 
@@ -40,12 +42,14 @@ public class SafetyService implements SafetyUseCase {
             BlockPort blockRepository,
             MomentRepositoryPort momentRepository,
             SpaceRepositoryPort spaceRepository,
+            UserRepositoryPort userRepository,
             PushPort pushPort,
             Clock clock) {
         this.reportRepository = reportRepository;
         this.blockRepository = blockRepository;
         this.momentRepository = momentRepository;
         this.spaceRepository = spaceRepository;
+        this.userRepository = userRepository;
         this.pushPort = pushPort;
         this.clock = clock;
     }
@@ -79,7 +83,12 @@ public class SafetyService implements SafetyUseCase {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "자신을 차단할 수 없어요.");
         }
 
-        // 중복 차단 검증 (이미 차단한 경우)
+        // 초대 수락과 동일한 사용자 잠금 규칙 — 두 사용자 행을 id 순서로 잠근다.
+        // 잠그지 않으면 "수락이 차단 없음을 확인 → 차단 저장 → 수락 커밋" 경합으로
+        // 차단 관계와 활성 스페이스가 동시에 존재할 수 있다.
+        userRepository.lockAllByIdsForUpdate(List.of(meId, targetUserId));
+
+        // 중복 차단 검증 (이미 차단한 경우) — 경합 방지를 위해 잠금 이후에 검사한다
         if (blockRepository.existsBlockBetween(meId, targetUserId)) {
             throw new BusinessException(ErrorCode.CONFLICT, "이미 차단한 사용자입니다.");
         }

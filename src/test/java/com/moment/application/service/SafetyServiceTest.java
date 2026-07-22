@@ -39,6 +39,7 @@ class SafetyServiceTest {
     @Mock private BlockPort blockRepository;
     @Mock private MomentRepositoryPort momentRepository;
     @Mock private SpaceRepositoryPort spaceRepository;
+    @Mock private com.moment.application.port.out.UserRepositoryPort userRepository;
     @Mock private PushPort pushPort;
 
     private SafetyService service;
@@ -50,7 +51,7 @@ class SafetyServiceTest {
     void setUp() {
         clock = Clock.fixed(Instant.parse("2024-01-01T00:00:00Z"), ZoneId.of("UTC"));
         service = new SafetyService(reportRepository, blockRepository, momentRepository,
-                spaceRepository, pushPort, clock);
+                spaceRepository, userRepository, pushPort, clock);
         meId = UUID.randomUUID();
         targetId = UUID.randomUUID();
     }

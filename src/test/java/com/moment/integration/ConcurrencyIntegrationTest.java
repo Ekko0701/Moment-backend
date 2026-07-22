@@ -195,6 +195,54 @@ class ConcurrencyIntegrationTest {
         }
     }
 
+    // ---- 4. 초대 수락과 차단의 경합 ----
+
+    @Test
+    @DisplayName("수락과 차단 동시 실행: 차단 관계와 ACTIVE 공유 스페이스가 동시에 존재해서는 안 된다")
+    void concurrentAcceptAndBlock_neverBothBlockAndActiveSpace() throws Exception {
+        for (int round = 0; round < REPEAT; round++) {
+            RestClient client = client();
+            String runId = UUID.randomUUID().toString();
+            String tokenA = login(client, "a-" + runId, "에이").get("data").get("accessToken").asText();
+            String tokenB = login(client, "b-" + runId, "비비").get("data").get("accessToken").asText();
+            UUID aId = UUID.fromString(me(client, tokenA).get("data").get("id").asText());
+            UUID bId = UUID.fromString(me(client, tokenB).get("data").get("id").asText());
+
+            // B가 코드 발급, A가 제출 → 수신자 B가 수락할 초대가 준비됨
+            String code = post(client, "/v1/invite-codes", tokenB, null).get("data").get("code").asText();
+            post(client, "/v1/invitations", tokenA, "{\"toUserId\":null,\"code\":\"" + code + "\"}");
+            String invId = firstReceivedInvitationId(client, tokenB);
+
+            // 동시 실행: B는 수락, A는 B를 차단
+            AtomicInteger idx = new AtomicInteger();
+            List<JsonNode> results = runConcurrently(2, () -> {
+                if (idx.getAndIncrement() == 0) {
+                    return patch(client, "/v1/invitations/" + invId, tokenB, "{\"action\":\"accept\"}");
+                }
+                return post(client, "/v1/blocks", tokenA, "{\"targetUserId\":\"" + bId + "\"}");
+            });
+            assertThat(results).hasSize(2);
+
+            // 차단은 반드시 성공한다 (수락이 먼저면 차단이 스페이스를 정리, 차단이 먼저면 수락이 거부됨)
+            Long blockCount = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM blocks WHERE blocker_id = ? AND blocked_id = ?",
+                    Long.class, aId, bId);
+            assertThat(blockCount).as("round %d: 차단 저장", round).isEqualTo(1);
+
+            // 불변식: 차단 관계가 있는 두 사용자가 ACTIVE 스페이스를 공유하면 안 된다
+            Long activeSharedSpaces = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM spaces s WHERE s.status = 'ACTIVE' "
+                            + "AND EXISTS (SELECT 1 FROM space_members m WHERE m.space_id = s.id "
+                            + "            AND m.user_id = ? AND m.left_at IS NULL) "
+                            + "AND EXISTS (SELECT 1 FROM space_members m WHERE m.space_id = s.id "
+                            + "            AND m.user_id = ? AND m.left_at IS NULL)",
+                    Long.class, aId, bId);
+            assertThat(activeSharedSpaces)
+                    .as("round %d: 차단된 사용자끼리 활성 스페이스 공유 금지", round)
+                    .isEqualTo(0);
+        }
+    }
+
     // ---- Helpers ----
 
     /**

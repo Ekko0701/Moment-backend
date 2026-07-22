@@ -76,6 +76,11 @@ public class UserService implements UserUseCase {
 
     @Override
     public void deleteMe(UUID userId) {
+        // 초대 수락과 동일한 사용자 잠금 규칙 — 탈퇴 중인 계정과 새 연결이 생기지 않도록
+        // 자기 행을 잠가 동시 수락과 직렬화한다. (수락은 두 참여자 행을 잠그므로
+        // 이 잠금과 겹치면 어느 한쪽이 커밋된 상태를 보고 올바르게 거부/정리한다)
+        userRepository.lockAllByIdsForUpdate(List.of(userId));
+
         User user = findActiveUser(userId);
         Instant now = clock.instant();
 
