@@ -28,6 +28,16 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * 1:1 연결 요청(Connection Invitation) 서비스 — 일반적인 "스페이스 초대"가 아니다.
+ *
+ * <p>v1.0의 초대는 "두 사람을 연결해 ONE_TO_ONE 스페이스를 만드는 요청"이며,
+ * 수락 시 스페이스 생성까지 이 서비스가 담당한다. 1인 1스페이스 정책과 사용자 행 잠금이
+ * 이 흐름에 강하게 결합되어 있다.
+ *
+ * <p>v2.0의 "기존 그룹 스페이스에 멤버를 초대"하는 기능은 의미가 다르므로 이 서비스를
+ * 확장하지 말고 별도의 그룹 멤버십/스페이스 초대 모델·서비스로 구현할 것.
+ */
 @Service
 @Transactional
 public class InvitationService implements InvitationUseCase {
