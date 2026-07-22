@@ -20,6 +20,8 @@ public class AuthRateLimiter {
 
     private static final Duration WINDOW = Duration.ofMinutes(1);
     private static final int MAX_REQUESTS_PER_WINDOW = 10;
+    // 무제한 키 유입(IP 스푸핑 등)으로 인한 메모리 팽창을 막는 상한 — 초과 시 만료 윈도우를 정리한다
+    private static final int MAX_TRACKED_KEYS = 10_000;
 
     private final Clock clock;
     private final boolean enabled;
@@ -42,6 +44,10 @@ public class AuthRateLimiter {
             return;
         }
         Instant now = clock.instant();
+        // 상한 초과 시 만료된 윈도우를 정리해 메모리 사용을 bound한다
+        if (windows.size() > MAX_TRACKED_KEYS) {
+            windows.entrySet().removeIf(e -> now.isAfter(e.getValue().start().plus(WINDOW)));
+        }
         Window window = windows.compute(key, (k, existing) -> {
             if (existing == null || now.isAfter(existing.start().plus(WINDOW))) {
                 return new Window(now, 1);
