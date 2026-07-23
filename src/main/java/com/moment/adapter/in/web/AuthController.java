@@ -36,7 +36,8 @@ public class AuthController {
             HttpServletRequest http) {
         rateLimiter.check("apple:" + clientIp(http));
         AuthUseCase.LoginResult result =
-                authUseCase.loginWithApple(request.identityToken(), request.nickname());
+                authUseCase.loginWithApple(request.identityToken(), request.authorizationCode(),
+                        request.nonce(), request.nickname());
         return ApiResponse.ok(TokenResponse.from(result));
     }
 

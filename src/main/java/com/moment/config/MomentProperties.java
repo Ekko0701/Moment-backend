@@ -15,7 +15,12 @@ public record MomentProperties(Jwt jwt, Auth auth, Invite invite, Policy policy)
 
     public record Auth(Apple apple) {
 
-        public record Apple(String mode) {
+        public record Apple(String mode, String clientId, String teamId, String keyId,
+                String privateKeyBase64, String tokenEncryptionKeyBase64) {
+
+            public Apple(String mode) {
+                this(mode, null, null, null, null, null);
+            }
         }
     }
 

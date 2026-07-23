@@ -2,6 +2,7 @@ package com.moment.application.service;
 
 import com.moment.application.port.in.AuthUseCase;
 import com.moment.application.port.out.AppleAuthPort;
+import com.moment.application.port.out.AppleCredentialPort;
 import com.moment.application.port.out.DevicePort;
 import com.moment.application.port.out.PasswordHasherPort;
 import com.moment.application.port.out.RefreshTokenPort;
@@ -37,6 +38,7 @@ public class AuthService implements AuthUseCase {
     private static final int MAX_PASSWORD_BYTES = 72;
 
     private final AppleAuthPort appleAuthPort;
+    private final AppleCredentialPort appleCredentialPort;
     private final UserRepositoryPort userRepository;
     private final PasswordHasherPort passwordHasher;
     private final RefreshTokenPort refreshTokenPort;
@@ -47,11 +49,13 @@ public class AuthService implements AuthUseCase {
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    public AuthService(AppleAuthPort appleAuthPort, UserRepositoryPort userRepository,
+    public AuthService(AppleAuthPort appleAuthPort, AppleCredentialPort appleCredentialPort,
+            UserRepositoryPort userRepository,
             PasswordHasherPort passwordHasher, RefreshTokenPort refreshTokenPort, TokenPort tokenPort,
             DevicePort devicePort, HandleGenerator handleGenerator, MomentProperties properties,
             Clock clock) {
         this.appleAuthPort = appleAuthPort;
+        this.appleCredentialPort = appleCredentialPort;
         this.userRepository = userRepository;
         this.passwordHasher = passwordHasher;
         this.refreshTokenPort = refreshTokenPort;
@@ -63,13 +67,18 @@ public class AuthService implements AuthUseCase {
     }
 
     @Override
-    public LoginResult loginWithApple(String identityToken, String nickname) {
-        AppleAuthPort.AppleIdentity identity = appleAuthPort.verify(identityToken);
+    public LoginResult loginWithApple(String identityToken, String authorizationCode, String nonce,
+            String nickname) {
+        AppleAuthPort.AppleIdentity identity =
+                appleAuthPort.authenticate(identityToken, authorizationCode, nonce);
         Optional<User> existing = userRepository.findByAppleSub(identity.appleSub());
         boolean isNewUser = existing.isEmpty();
         User user = existing.orElseGet(() -> signUpWithApple(identity.appleSub(), nickname));
         if (!user.isActive()) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "사용할 수 없는 계정이에요.");
+        }
+        if (identity.encryptedRefreshToken() != null) {
+            appleCredentialPort.save(user.id(), identity.encryptedRefreshToken(), clock.instant());
         }
         return new LoginResult(issueTokens(user.id()), isNewUser);
     }

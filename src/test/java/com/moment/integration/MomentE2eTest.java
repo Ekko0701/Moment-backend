@@ -63,7 +63,7 @@ class MomentE2eTest {
         String respA = client.post()
                 .uri("/v1/auth/apple")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body("{\"identityToken\":\"user-a-" + runId + "\",\"nickname\":\"에이\"}")
+                .body("{\"identityToken\":\"user-a-" + runId + "\",\"authorizationCode\":\"stub-code\",\"nonce\":\"stub-nonce\",\"nickname\":\"에이\"}")
                 .retrieve()
                 .body(String.class);
         tokenA = extractToken(respA);
@@ -72,7 +72,7 @@ class MomentE2eTest {
         String respB = client.post()
                 .uri("/v1/auth/apple")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body("{\"identityToken\":\"user-b-" + runId + "\",\"nickname\":\"비비\"}")
+                .body("{\"identityToken\":\"user-b-" + runId + "\",\"authorizationCode\":\"stub-code\",\"nonce\":\"stub-nonce\",\"nickname\":\"비비\"}")
                 .retrieve()
                 .body(String.class);
         tokenB = extractToken(respB);
@@ -81,7 +81,7 @@ class MomentE2eTest {
         String respC = client.post()
                 .uri("/v1/auth/apple")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body("{\"identityToken\":\"user-c-" + runId + "\",\"nickname\":\"씨씨\"}")
+                .body("{\"identityToken\":\"user-c-" + runId + "\",\"authorizationCode\":\"stub-code\",\"nonce\":\"stub-nonce\",\"nickname\":\"씨씨\"}")
                 .retrieve()
                 .body(String.class);
         tokenC = extractToken(respC);

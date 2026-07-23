@@ -1,6 +1,8 @@
 package com.moment.application.service;
 
 import com.moment.application.port.in.UserUseCase;
+import com.moment.application.port.out.AppleAuthPort;
+import com.moment.application.port.out.AppleCredentialPort;
 import com.moment.application.port.out.DevicePort;
 import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.PushPort.PushMessage;
@@ -28,6 +30,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserService implements UserUseCase {
 
     private final UserRepositoryPort userRepository;
+    private final AppleAuthPort appleAuthPort;
+    private final AppleCredentialPort appleCredentialPort;
     private final RefreshTokenPort refreshTokenPort;
     private final DevicePort devicePort;
     private final SpaceRepositoryPort spaceRepository;
@@ -35,10 +39,13 @@ public class UserService implements UserUseCase {
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
-    public UserService(UserRepositoryPort userRepository, RefreshTokenPort refreshTokenPort,
+    public UserService(UserRepositoryPort userRepository, AppleAuthPort appleAuthPort,
+            AppleCredentialPort appleCredentialPort, RefreshTokenPort refreshTokenPort,
             DevicePort devicePort, SpaceRepositoryPort spaceRepository, PushPort pushPort,
             Clock clock) {
         this.userRepository = userRepository;
+        this.appleAuthPort = appleAuthPort;
+        this.appleCredentialPort = appleCredentialPort;
         this.refreshTokenPort = refreshTokenPort;
         this.devicePort = devicePort;
         this.spaceRepository = spaceRepository;
@@ -83,6 +90,11 @@ public class UserService implements UserUseCase {
 
         User user = findActiveUser(userId);
         Instant now = clock.instant();
+
+        // Apple 계정은 로컬 데이터 삭제 전에 Apple refresh token도 폐기한다.
+        // 실패 시 트랜잭션을 롤백해 "로컬만 삭제되고 Apple 연결은 남는" 상태를 피한다.
+        appleCredentialPort.findEncryptedRefreshToken(userId).ifPresent(appleAuthPort::revoke);
+        appleCredentialPort.deleteByUserId(userId);
 
         userRepository.save(user.withdraw(anonymizedHandle(), now));
         refreshTokenPort.deleteAllByUserId(userId);

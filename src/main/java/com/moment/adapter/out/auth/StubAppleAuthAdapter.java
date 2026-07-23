@@ -32,10 +32,15 @@ public class StubAppleAuthAdapter implements AppleAuthPort {
     }
 
     @Override
-    public AppleIdentity verify(String identityToken) {
+    public AppleIdentity authenticate(String identityToken, String authorizationCode, String nonce) {
         if (identityToken == null || identityToken.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_TOKEN);
         }
-        return new AppleIdentity("stub:" + identityToken);
+        return new AppleIdentity("stub:" + identityToken, null);
+    }
+
+    @Override
+    public void revoke(String encryptedRefreshToken) {
+        // dev stub에는 Apple 측 세션이 없다.
     }
 }

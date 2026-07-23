@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.moment.application.port.in.AuthUseCase.LoginResult;
 import com.moment.application.port.in.AuthUseCase.TokenPair;
 import com.moment.application.port.out.AppleAuthPort;
+import com.moment.application.port.out.AppleCredentialPort;
 import com.moment.application.port.out.DevicePort;
 import com.moment.application.port.out.PasswordHasherPort;
 import com.moment.application.port.out.RefreshTokenPort;
@@ -42,6 +43,8 @@ class AuthServiceTest {
     @Mock
     private AppleAuthPort appleAuthPort;
     @Mock
+    private AppleCredentialPort appleCredentialPort;
+    @Mock
     private UserRepositoryPort userRepository;
     @Mock
     private PasswordHasherPort passwordHasher;
@@ -63,7 +66,7 @@ class AuthServiceTest {
                 new MomentProperties.Auth(new MomentProperties.Auth.Apple("stub")),
                 new MomentProperties.Invite(Duration.ofHours(24), Duration.ofHours(72)),
                 new MomentProperties.Policy(true));
-        authService = new AuthService(appleAuthPort, userRepository, passwordHasher,
+        authService = new AuthService(appleAuthPort, appleCredentialPort, userRepository, passwordHasher,
                 refreshTokenPort, tokenPort, devicePort, handleGenerator, properties,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -71,29 +74,32 @@ class AuthServiceTest {
     @Test
     @DisplayName("Apple 미가입 사용자는 자동 가입되고 isNewUser=true로 응답한다")
     void loginWithApple_newUser_signsUp() {
-        when(appleAuthPort.verify("token")).thenReturn(new AppleAuthPort.AppleIdentity("sub-1"));
+        when(appleAuthPort.authenticate("token", "code", "nonce"))
+                .thenReturn(new AppleAuthPort.AppleIdentity("sub-1", "encrypted-refresh"));
         when(userRepository.findByAppleSub("sub-1")).thenReturn(Optional.empty());
         when(handleGenerator.generate("동주")).thenReturn("moment_1234");
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
         when(tokenPort.createAccessToken(any(UUID.class))).thenReturn("access-token");
 
-        LoginResult result = authService.loginWithApple("token", "동주");
+        LoginResult result = authService.loginWithApple("token", "code", "nonce", "동주");
 
         assertThat(result.isNewUser()).isTrue();
         assertThat(result.tokens().accessToken()).isEqualTo("access-token");
         assertThat(result.tokens().refreshToken()).isNotBlank();
         verify(refreshTokenPort).save(any(RefreshToken.class));
+        verify(appleCredentialPort).save(any(UUID.class), anyString(), any(Instant.class));
     }
 
     @Test
     @DisplayName("Apple 기존 사용자는 가입 없이 로그인되고 isNewUser=false다")
     void loginWithApple_existingUser() {
         User existing = User.signUp(UUID.randomUUID(), "dongjoo_1234", "동주", "sub-1", NOW);
-        when(appleAuthPort.verify("token")).thenReturn(new AppleAuthPort.AppleIdentity("sub-1"));
+        when(appleAuthPort.authenticate("token", "code", "nonce"))
+                .thenReturn(new AppleAuthPort.AppleIdentity("sub-1", "encrypted-refresh"));
         when(userRepository.findByAppleSub("sub-1")).thenReturn(Optional.of(existing));
         when(tokenPort.createAccessToken(existing.id())).thenReturn("access-token");
 
-        LoginResult result = authService.loginWithApple("token", null);
+        LoginResult result = authService.loginWithApple("token", "code", "nonce", null);
 
         assertThat(result.isNewUser()).isFalse();
         verify(userRepository, never()).save(any(User.class));

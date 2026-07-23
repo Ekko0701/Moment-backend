@@ -7,6 +7,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.moment.application.port.in.UserUseCase.UpdateMyProfileCommand;
+import com.moment.application.port.out.AppleAuthPort;
+import com.moment.application.port.out.AppleCredentialPort;
 import com.moment.application.port.out.DevicePort;
 import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.RefreshTokenPort;
@@ -37,6 +39,10 @@ class UserServiceTest {
     @Mock
     private UserRepositoryPort userRepository;
     @Mock
+    private AppleAuthPort appleAuthPort;
+    @Mock
+    private AppleCredentialPort appleCredentialPort;
+    @Mock
     private RefreshTokenPort refreshTokenPort;
     @Mock
     private DevicePort devicePort;
@@ -50,7 +56,7 @@ class UserServiceTest {
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository, refreshTokenPort,
+        userService = new UserService(userRepository, appleAuthPort, appleCredentialPort, refreshTokenPort,
                 devicePort, spaceRepository, pushPort, Clock.fixed(NOW, ZoneOffset.UTC));
         user = User.signUp(UUID.randomUUID(), "dongjoo_1234", "동주", "sub-1", NOW);
     }
@@ -88,6 +94,8 @@ class UserServiceTest {
     void deleteMe_withdrawsAndClearsTokens() {
         when(userRepository.findById(user.id())).thenReturn(Optional.of(user));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(appleCredentialPort.findEncryptedRefreshToken(user.id()))
+                .thenReturn(Optional.of("encrypted-refresh"));
 
         userService.deleteMe(user.id());
 
@@ -96,6 +104,8 @@ class UserServiceTest {
         assertThat(captor.getValue().status()).isEqualTo(UserStatus.DELETED);
         assertThat(captor.getValue().handle()).startsWith("del_");
         verify(refreshTokenPort).deleteAllByUserId(user.id());
+        verify(appleAuthPort).revoke("encrypted-refresh");
+        verify(appleCredentialPort).deleteByUserId(user.id());
     }
 
     @Test

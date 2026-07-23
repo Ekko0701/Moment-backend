@@ -29,7 +29,9 @@ class StubAppleAuthAdapterTest {
         dev.setActiveProfiles("dev");
 
         StubAppleAuthAdapter adapter = new StubAppleAuthAdapter(dev);
-        assertThatCode(() -> adapter.verify("token-x")).doesNotThrowAnyException();
-        assertThat(adapter.verify("token-x").appleSub()).isEqualTo("stub:token-x");
+        assertThatCode(() -> adapter.authenticate("token-x", "code", "nonce"))
+                .doesNotThrowAnyException();
+        assertThat(adapter.authenticate("token-x", "code", "nonce").appleSub())
+                .isEqualTo("stub:token-x");
     }
 }

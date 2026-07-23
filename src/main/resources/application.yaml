@@ -1,8 +1,6 @@
 spring:
   application:
     name: moment
-  profiles:
-    default: dev
   jpa:
     open-in-view: false
     hibernate:
@@ -21,6 +19,13 @@ moment:
     apple:
       # 기본값 apple(운영 안전). dev 프로필이 stub으로 덮어쓴다.
       mode: ${MOMENT_APPLE_AUTH_MODE:apple}
+      client-id: ${MOMENT_APPLE_CLIENT_ID:}
+      team-id: ${MOMENT_APPLE_TEAM_ID:}
+      key-id: ${MOMENT_APPLE_KEY_ID:}
+      # AuthKey_*.p8 또는 DER를 통째로 base64 인코딩한 값. 원문 키를 저장소에 넣지 않는다.
+      private-key-base64: ${MOMENT_APPLE_PRIVATE_KEY_BASE64:}
+      # `openssl rand -base64 32`로 생성한 Apple refresh token AES-256 암호화 키.
+      token-encryption-key-base64: ${MOMENT_APPLE_TOKEN_ENCRYPTION_KEY_BASE64:}
   invite:
     code-ttl: 24h
     invitation-ttl: 72h

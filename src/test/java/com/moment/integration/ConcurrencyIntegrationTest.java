@@ -284,7 +284,9 @@ class ConcurrencyIntegrationTest {
 
     private JsonNode login(RestClient client, String token, String nickname) {
         return post(client, "/v1/auth/apple", null,
-                "{\"identityToken\":\"" + token + "\",\"nickname\":\"" + nickname + "\"}");
+                "{\"identityToken\":\"" + token
+                        + "\",\"authorizationCode\":\"stub-code\",\"nonce\":\"stub-nonce\",\"nickname\":\""
+                        + nickname + "\"}");
     }
 
     private JsonNode me(RestClient client, String accessToken) {
