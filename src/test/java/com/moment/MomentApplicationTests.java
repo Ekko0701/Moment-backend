@@ -2,6 +2,7 @@ package com.moment;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.moment.config.MomentProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,9 +16,16 @@ class MomentApplicationTests {
     @Autowired
     private RestClient.Builder restClientBuilder;
 
+    @Autowired
+    private MomentProperties momentProperties;
+
     @Test
     void contextLoads() {
         assertThat(restClientBuilder).isNotNull();
+        assertThat(momentProperties.auth()).isNotNull();
+        assertThat(momentProperties.auth().apple()).isNotNull();
+        // dev 프로필은 스텁 인증 모드를 사용한다 — yaml 프로필 오버라이드 회귀 가드
+        assertThat(momentProperties.auth().apple().mode()).isEqualTo("stub");
     }
 
 }

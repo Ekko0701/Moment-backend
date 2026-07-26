@@ -63,7 +63,7 @@ class AuthServiceTest {
     void setUp() {
         MomentProperties properties = new MomentProperties(
                 new MomentProperties.Jwt("secret", Duration.ofMinutes(30), Duration.ofDays(30)),
-                new MomentProperties.Auth(new MomentProperties.Auth.Apple("stub")),
+                new MomentProperties.Auth(MomentProperties.Auth.Apple.stub()),
                 new MomentProperties.Invite(Duration.ofHours(24), Duration.ofHours(72)),
                 new MomentProperties.Policy(true));
         authService = new AuthService(appleAuthPort, appleCredentialPort, userRepository, passwordHasher,

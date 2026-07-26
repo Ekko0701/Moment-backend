@@ -18,8 +18,9 @@ public record MomentProperties(Jwt jwt, Auth auth, Invite invite, Policy policy)
         public record Apple(String mode, String clientId, String teamId, String keyId,
                 String privateKeyBase64, String tokenEncryptionKeyBase64) {
 
-            public Apple(String mode) {
-                this(mode, null, null, null, null, null);
+            /** 테스트 전용 — dev 프로필의 stub 모드 프로퍼티. 운영 코드에서 호출하지 않는다. */
+            public static Apple stub() {
+                return new Apple("stub", null, null, null, null, null);
             }
         }
     }
