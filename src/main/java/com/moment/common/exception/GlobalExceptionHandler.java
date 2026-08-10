@@ -4,6 +4,7 @@ import com.moment.common.response.ApiResponse;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.ConcurrencyFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -63,6 +64,18 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(ErrorCode.INVALID_REQUEST.name(),
                         ex.getParameterName() + " 파라미터가 필요해요."));
+    }
+
+    // 동시성 충돌(데드락 패자·잠금 실패 등) → 500 대신 409로 매핑.
+    // 같은 사용자의 요청 둘이 서로의 잠금을 기다리면 PostgreSQL이 한쪽을 강제 중단시키는데
+    // (예: 서로 다른 초대 동시 수락), 패자 트랜잭션은 전부 롤백되어 데이터는 안전하므로
+    // "동시 요청 충돌"이라는 의미에 맞게 CONFLICT로 응답한다. 재시도하면 정상 결과를 받는다.
+    @ExceptionHandler(ConcurrencyFailureException.class)
+    ResponseEntity<ApiResponse<Void>> handleConcurrencyFailure(ConcurrencyFailureException ex) {
+        log.warn("concurrency_conflict message={}", ex.getMostSpecificCause().getMessage());
+        return ResponseEntity.status(ErrorCode.CONFLICT.getStatus())
+                .body(ApiResponse.error(ErrorCode.CONFLICT.name(),
+                        "동시에 처리 중인 요청이 있어요. 잠시 후 다시 시도해 주세요."));
     }
 
     // DB 제약 위반(유니크·NOT NULL 등) → 500 대신 409로 매핑
