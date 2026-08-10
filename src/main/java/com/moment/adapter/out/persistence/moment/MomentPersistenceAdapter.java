@@ -36,8 +36,11 @@ class MomentPersistenceAdapter implements MomentRepositoryPort {
 
     @Override
     public TimelinePage findTimeline(UUID spaceId, Instant cursorCreatedAt, UUID cursorId, int limit) {
-        List<Moment> moments = jpaRepository.findTimeline(spaceId, cursorCreatedAt, cursorId, limit)
-                .stream()
+        // 커서 유무를 여기서 분기한다 — 쿼리에 null 파라미터를 넘기면 PostgreSQL이 거부한다
+        List<MomentEntity> entities = (cursorCreatedAt == null)
+                ? jpaRepository.findTimelineFirstPage(spaceId, limit)
+                : jpaRepository.findTimelineAfterCursor(spaceId, cursorCreatedAt, cursorId, limit);
+        List<Moment> moments = entities.stream()
                 .map(MomentEntity::toDomain)
                 .toList();
         return new TimelinePage(moments, null, false);
@@ -45,7 +48,9 @@ class MomentPersistenceAdapter implements MomentRepositoryPort {
 
     @Override
     public Optional<Moment> findLatestBySpace(UUID spaceId, UUID excludeAuthorId) {
-        return jpaRepository.findLatestBySpace(spaceId, excludeAuthorId)
-                .map(MomentEntity::toDomain);
+        Optional<MomentEntity> entity = (excludeAuthorId == null)
+                ? jpaRepository.findLatestBySpace(spaceId)
+                : jpaRepository.findLatestBySpaceExcludingAuthor(spaceId, excludeAuthorId);
+        return entity.map(MomentEntity::toDomain);
     }
 }
