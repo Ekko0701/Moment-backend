@@ -28,4 +28,8 @@ public record Space(
     public Space deactivate() {
         return new Space(id, type, name, maxMembers, SpaceStatus.INACTIVE, createdAt);
     }
+
+    public Space rename(String newName) { 
+        return new Space(id, type, newName, maxMembers, status, createdAt);
+    }
 }

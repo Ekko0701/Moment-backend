@@ -5,6 +5,7 @@ import java.util.UUID;
 
 public record SpaceResponse(
         UUID id,
+        String name,
         String type,
         String status,
         long connectedAt,

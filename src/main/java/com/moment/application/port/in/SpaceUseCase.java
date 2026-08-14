@@ -11,6 +11,7 @@ public interface SpaceUseCase {
 
     record SpaceView(
             UUID id,
+            String name,
             String type,
             String status,
             long connectedAt,
@@ -24,4 +25,6 @@ public interface SpaceUseCase {
             String profileImageUrl,
             long joinedAt) {
     }
+
+    void rename(UUID meId, UUID spaceId, String name);
 }

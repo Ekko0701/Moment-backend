@@ -1,14 +1,20 @@
 package com.moment.adapter.in.web;
 
+import com.moment.adapter.in.web.dto.space.RenameSpaceRequest;
 import com.moment.adapter.in.web.dto.space.SpaceResponse;
 import com.moment.application.port.in.SpaceUseCase;
 import com.moment.common.response.ApiResponse;
+
+import jakarta.validation.Valid;
+
 import java.util.List;
 import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,6 +34,7 @@ public class SpaceController {
         var responses = spaceViews.stream()
                 .map(view -> new SpaceResponse(
                         view.id(),
+                        view.name(),
                         view.type(),
                         view.status(),
                         view.connectedAt(),
@@ -46,6 +53,16 @@ public class SpaceController {
     @DeleteMapping("/{spaceId}/members/me")
     ApiResponse<Void> leave(@AuthenticationPrincipal UUID userId, @PathVariable UUID spaceId) {
         spaceUseCase.leave(userId, spaceId);
+        return ApiResponse.ok();
+    }
+
+    @PatchMapping("/{spaceId}")
+    ApiResponse<Void> rename(
+        @AuthenticationPrincipal UUID userId, 
+        @PathVariable UUID spaceId, 
+        @Valid @RequestBody RenameSpaceRequest request) { 
+            
+        spaceUseCase.rename(userId, spaceId, request.name());
         return ApiResponse.ok();
     }
 }

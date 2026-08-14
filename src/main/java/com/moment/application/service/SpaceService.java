@@ -67,6 +67,7 @@ public class SpaceService implements SpaceUseCase {
 
                     return new SpaceView(
                             space.id(),
+                            space.name(),
                             space.type().name(),
                             space.status().name(),
                             space.createdAt().toEpochMilli(),
@@ -112,5 +113,20 @@ public class SpaceService implements SpaceUseCase {
             // 그룹 스페이스(향후): 나간 사람만 종료
             spaceRepository.saveMember(myMember.leave(now));
         }
+    }
+
+    @Override
+    public void rename(UUID meId, UUID spaceId, String name) {
+            Space space = spaceRepository.findById(spaceId)
+                            .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                                            "스페이스를 찾을 수 없어요."));
+
+            boolean isMember = spaceRepository.findActiveMembersBySpaceId(spaceId).stream()
+                            .anyMatch(m -> m.userId().equals(meId) && m.isActive());
+            if (!isMember) {
+                    throw new BusinessException(ErrorCode.FORBIDDEN, "스페이스 멤버가 아닙니다.");
+            }
+            String normalized = (name == null || name.isBlank()) ? null : name.trim();
+            spaceRepository.save(space.rename(normalized));
     }
 }
