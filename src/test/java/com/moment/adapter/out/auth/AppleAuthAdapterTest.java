@@ -59,7 +59,8 @@ class AppleAuthAdapterTest {
                 new MomentProperties.Jwt("secret", Duration.ofMinutes(30), Duration.ofDays(30)),
                 new MomentProperties.Auth(apple),
                 new MomentProperties.Invite(Duration.ofHours(24), Duration.ofHours(72)),
-                new MomentProperties.Policy(true));
+                new MomentProperties.Policy(true),
+                MomentProperties.Storage.stub());
 
         RestClient.Builder builder = RestClient.builder().baseUrl("https://appleid.apple.com");
         server = MockRestServiceServer.bindTo(builder).build();

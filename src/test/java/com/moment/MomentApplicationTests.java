@@ -29,8 +29,9 @@ class MomentApplicationTests {
         assertThat(restClientBuilder).isNotNull();
         assertThat(momentProperties.auth()).isNotNull();
         assertThat(momentProperties.auth().apple()).isNotNull();
-        // dev 프로필은 스텁 인증 모드를 사용한다 — yaml 프로필 오버라이드 회귀 가드
+        // dev 프로필은 스텁 인증·스토리지 모드를 사용한다 — yaml 프로필 오버라이드 회귀 가드
         assertThat(momentProperties.auth().apple().mode()).isEqualTo("stub");
+        assertThat(momentProperties.storage().mode()).isEqualTo("stub");
         assertThat(applicationContext.getBeansOfType(UserDetailsService.class)).isEmpty();
     }
 

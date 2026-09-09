@@ -39,6 +39,10 @@ dependencies {
     // API 문서 (Swagger UI) — springdoc 3.x가 Boot 4 대응
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 
+    // Storage — S3 presigned URL 발급 (운영 s3 모드). dev는 stub 어댑터를 쓴다.
+    implementation platform('software.amazon.awssdk:bom:2.29.52')
+    implementation 'software.amazon.awssdk:s3'
+
     // JWT
     implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
     runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'

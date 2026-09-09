@@ -75,8 +75,9 @@ public class MomentService implements MomentUseCase {
             throw new BusinessException(ErrorCode.FORBIDDEN, "해당 스페이스의 멤버가 아니에요.");
         }
 
-        // imageUrl이 있으면 이 스토리지가 발급한 관리 경로인지 검증 (임의 외부 URL 주입 차단)
-        if (command.imageUrl() != null && !storagePort.isManagedImageUrl(command.imageUrl())) {
+        // imageUrl이 있으면 이 스토리지가 "본인에게" 발급한 관리 경로인지 검증
+        // (임의 외부 URL 주입 + 타인이 업로드한 객체 참조 차단)
+        if (command.imageUrl() != null && !storagePort.isManagedImageUrl(meId, command.imageUrl())) {
             throw new BusinessException(ErrorCode.INVALID_REQUEST, "유효하지 않은 이미지 경로예요.");
         }
 
