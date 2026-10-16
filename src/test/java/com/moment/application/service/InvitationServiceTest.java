@@ -64,7 +64,8 @@ class InvitationServiceTest {
                 new MomentProperties.Jwt("secret", Duration.ofMinutes(30), Duration.ofDays(30)),
                 new MomentProperties.Auth(MomentProperties.Auth.Apple.stub()),
                 new MomentProperties.Invite(Duration.ofHours(24), Duration.ofHours(72)),
-                new MomentProperties.Policy(true));
+                new MomentProperties.Policy(true),
+                MomentProperties.Storage.stub());
         service = new InvitationService(spaceRepository, inviteCodePort, invitationPort, blockPort,
                 userRepository, pushPort, properties, Clock.fixed(NOW, ZoneOffset.UTC));
         meId = UUID.randomUUID();

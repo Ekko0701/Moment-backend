@@ -32,6 +32,17 @@ moment:
   policy:
     # MVP 정책: 사용자당 활성 ONE_TO_ONE 스페이스 1개 (다중 스페이스 개방 시 false)
     single-space-enabled: true
+  storage:
+    # 기본값 s3(운영 안전). dev 프로필이 stub으로 덮어쓴다.
+    # s3 모드는 버킷/리전/공개 URL 미주입 시 기동 실패(fail-closed).
+    mode: ${MOMENT_STORAGE_MODE:s3}
+    s3:
+      bucket: ${MOMENT_STORAGE_S3_BUCKET:}
+      region: ${MOMENT_STORAGE_S3_REGION:}
+      # 업로드된 이미지를 서빙하는 공개 베이스 URL (CloudFront 또는 S3 정적 호스팅), 끝 슬래시 없이.
+      public-base-url: ${MOMENT_STORAGE_S3_PUBLIC_BASE_URL:}
+      # presigned PUT 서명 유효기간 — 클라이언트가 presign 직후 업로드하므로 짧게 유지한다.
+      presign-ttl: 10m
 
 ---
 spring:
@@ -48,13 +59,15 @@ spring:
       enabled: true
       path: /h2-console
 
-# 개발 전용 인증 기본값 — 운영(prod)에는 존재하지 않는다.
+# 개발 전용 인증·스토리지 기본값 — 운영(prod)에는 존재하지 않는다.
 moment:
   jwt:
     secret: dev-only-secret-key-change-me-0123456789abcdef
   auth:
     apple:
       mode: stub
+  storage:
+    mode: stub
 
 logging:
   level:

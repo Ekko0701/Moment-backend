@@ -14,3 +14,5 @@ moment:
   auth:
     apple:
       mode: stub
+  storage:
+    mode: stub
