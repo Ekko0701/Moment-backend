@@ -4,6 +4,7 @@ import com.moment.application.port.out.StoragePort;
 import com.moment.config.MomentProperties;
 import java.time.Duration;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.regions.Region;
@@ -33,6 +34,8 @@ class S3StorageAdapter implements StoragePort {
     private final String publicBaseUrl;
     private final Duration presignTtl;
 
+    // 생성자가 둘이라 Spring이 고를 수 없다(기본 생성자 탐색 → 기동 실패). 운영 주입 경로를 명시한다.
+    @Autowired
     S3StorageAdapter(MomentProperties properties) {
         this(properties, buildPresigner(properties));
     }
