@@ -34,7 +34,7 @@ class S3StorageAdapter implements StoragePort {
     private final String publicBaseUrl;
     private final Duration presignTtl;
 
-    // 생성자가 둘이라 Spring이 고를 수 없다(기본 생성자 탐색 → 기동 실패). 운영 주입 경로를 명시한다.
+    /** 운영 주입 생성자. 생성자가 둘이므로 Spring이 사용할 쪽을 명시한다. */
     @Autowired
     S3StorageAdapter(MomentProperties properties) {
         this(properties, buildPresigner(properties));
