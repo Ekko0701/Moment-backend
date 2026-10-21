@@ -5,6 +5,7 @@ import com.moment.domain.space.Space;
 import com.moment.domain.space.SpaceMember;
 import com.moment.domain.space.SpaceStatus;
 import com.moment.domain.space.SpaceType;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -41,6 +42,24 @@ class SpacePersistenceAdapter implements SpaceRepositoryPort {
     @Override
     public Optional<Space> findById(UUID id) {
         return spaceJpaRepository.findById(id).map(SpaceEntity::toDomain);
+    }
+
+    @Override
+    public Optional<Space> findByIdForUpdate(UUID id) {
+        return spaceJpaRepository.findByIdForUpdate(id).map(SpaceEntity::toDomain);
+    }
+
+    @Override
+    public List<Space> findAllByIds(Collection<UUID> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return spaceJpaRepository.findAllById(ids).stream().map(SpaceEntity::toDomain).toList();
+    }
+
+    @Override
+    public Optional<SpaceMember> findMember(UUID spaceId, UUID userId) {
+        return memberJpaRepository.findBySpaceIdAndUserId(spaceId, userId).map(SpaceMemberEntity::toDomain);
     }
 
     @Override

@@ -42,6 +42,9 @@ public class SpaceMemberEntity {
     @Column(name = "left_at")
     private Instant leftAt;
 
+    @Column(name = "notifications_enabled", nullable = false)
+    private boolean notificationsEnabled;
+
     static SpaceMemberEntity fromDomain(SpaceMember member) {
         SpaceMemberEntity entity = new SpaceMemberEntity();
         entity.id = member.id();
@@ -55,10 +58,11 @@ public class SpaceMemberEntity {
         this.role = member.role();
         this.joinedAt = member.joinedAt();
         this.leftAt = member.leftAt();
+        this.notificationsEnabled = member.notificationsEnabled();
     }
 
     SpaceMember toDomain() {
-        return new SpaceMember(id, spaceId, userId, role, joinedAt, leftAt);
+        return new SpaceMember(id, spaceId, userId, role, joinedAt, leftAt, notificationsEnabled);
     }
 
     UUID getSpaceId() {

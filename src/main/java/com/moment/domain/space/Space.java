@@ -23,13 +23,28 @@ public record Space(
     }
 
     /**
+     * 그룹 스페이스 생성 (ACTIVE). 정원은 생성 시점의 정책값을 기록한다.
+     */
+    public static Space group(UUID id, String name, int maxMembers, Instant now) {
+        return new Space(id, SpaceType.GROUP, name, maxMembers, SpaceStatus.ACTIVE, now);
+    }
+
+    /**
      * 스페이스 비활성화.
      */
     public Space deactivate() {
         return new Space(id, type, name, maxMembers, SpaceStatus.INACTIVE, createdAt);
     }
 
-    public Space rename(String newName) { 
+    public Space rename(String newName) {
         return new Space(id, type, newName, maxMembers, status, createdAt);
+    }
+
+    public boolean isGroup() {
+        return type == SpaceType.GROUP;
+    }
+
+    public boolean isActive() {
+        return status == SpaceStatus.ACTIVE;
     }
 }

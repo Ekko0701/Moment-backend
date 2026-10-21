@@ -48,4 +48,16 @@ class SpaceTest {
         assertThat(space.status()).isEqualTo(SpaceStatus.ACTIVE);
         assertThat(deactivated.status()).isEqualTo(SpaceStatus.INACTIVE);
     }
+
+    @Test
+    @DisplayName("그룹 스페이스 생성 시 이름과 정원을 기록하고 ACTIVE로 시작한다")
+    void group_creates() {
+        Space space = Space.group(UUID.randomUUID(), "주말 산책", 6, NOW);
+
+        assertThat(space.type()).isEqualTo(SpaceType.GROUP);
+        assertThat(space.isGroup()).isTrue();
+        assertThat(space.name()).isEqualTo("주말 산책");
+        assertThat(space.maxMembers()).isEqualTo(6);
+        assertThat(space.isActive()).isTrue();
+    }
 }
