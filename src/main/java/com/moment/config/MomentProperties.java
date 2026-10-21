@@ -35,7 +35,7 @@ public record MomentProperties(Jwt jwt, Auth auth, Invite invite, Policy policy,
      * @param singleSpaceEnabled 사용자당 활성 1:1 스페이스를 1개로 제한 (그룹에는 적용하지 않음)
      * @param groupMaxMembers   새 그룹 스페이스의 정원
      */
-    public record Policy(boolean singleSpaceEnabled, int groupMaxMembers) {
+    public record Policy(boolean singleSpaceEnabled, int groupMaxMembers, int groupMaxPerUser) {
     }
 
     public record Storage(String mode, S3 s3) {

@@ -14,6 +14,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.moment.application.port.out.GroupInviteCodePort;
+import com.moment.application.port.out.GroupJoinRequestPort;
 import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.SpaceRepositoryPort;
 import com.moment.application.port.out.UserRepositoryPort;
@@ -27,6 +28,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,13 +49,14 @@ class SpaceServiceTest {
     @Mock private UserRepositoryPort userRepository;
     @Mock private PushPort pushPort;
     @Mock private GroupInviteCodePort groupInviteCodePort;
+    @Mock private GroupJoinRequestPort joinRequestPort;
 
     private SpaceService service;
 
     @BeforeEach
     void setUp() {
         service = new SpaceService(spaceRepository, userRepository, pushPort,
-                new GroupMemberExit(spaceRepository, groupInviteCodePort, pushPort),
+                new GroupMemberExit(spaceRepository, groupInviteCodePort, pushPort), joinRequestPort,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -283,11 +286,18 @@ class SpaceServiceTest {
                 UserStatus.ACTIVE, NOW, NOW);
         when(spaceRepository.findActiveMembershipsByUserId(meId)).thenReturn(List.of(inGroup, inPair));
         when(spaceRepository.findAllByIds(any())).thenReturn(List.of(olderGroup, oneToOne));
-        when(spaceRepository.findActiveMembersBySpaceId(olderGroup.id())).thenReturn(List.of(inGroup));
-        when(spaceRepository.findActiveMembersBySpaceId(oneToOne.id())).thenReturn(List.of(inPair));
+        when(spaceRepository.findActiveMembersBySpaceIds(any())).thenReturn(List.of(inGroup, inPair));
         when(userRepository.findAllByIds(any())).thenReturn(List.of(me));
+        when(joinRequestPort.countPendingBySpaceIds(List.of(olderGroup.id()))).thenReturn(Map.of(olderGroup.id(), 2L));
 
         List<SpaceView> views = service.getMySpaces(meId);
+
+        // 스페이스 수와 무관하게 멤버·사용자를 한 번씩만 조회한다
+        verify(spaceRepository, never()).findActiveMembersBySpaceId(any());
+        verify(userRepository, times(1)).findAllByIds(any());
+        // 대기 요청 수는 내가 방장인 그룹에만 붙는다
+        assertThat(views.get(1).pendingJoinRequestCount()).isEqualTo(2);
+        assertThat(views.get(0).pendingJoinRequestCount()).isZero();
 
         assertThat(views).extracting(SpaceView::id).containsExactly(oneToOne.id(), olderGroup.id());
         assertThat(views.get(1).myRole()).isEqualTo("OWNER");

@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * 그룹 스페이스 유스케이스. 1:1 연결(InvitationUseCase)과 별개로, 초대 코드로 여러 명이 참여하는
+ * 그룹 스페이스 유스케이스. 1:1 연결(InvitationUseCase)과 별개로, 초대 코드와 방장 수락으로 여러 명이 참여하는
  * 스페이스의 생성·참여·멤버 관리를 담당한다.
  */
 public interface GroupSpaceUseCase {
@@ -19,8 +19,23 @@ public interface GroupSpaceUseCase {
     /** 그룹 멤버 누구나 현재 초대 코드를 조회한다. */
     IssuedCode currentCode(UUID meId, UUID spaceId);
 
-    /** 초대 코드로 그룹에 참여하고 참여한 스페이스 id를 돌려준다. */
-    UUID join(UUID meId, String code);
+    /**
+     * 초대 코드로 참여를 요청한다. 방장이 수락해야 멤버가 된다.
+     * 같은 그룹에 대기 중인 요청이 있으면 그 요청을 그대로 돌려준다.
+     */
+    JoinRequestView requestJoin(UUID meId, String code);
+
+    /** 내가 보낸 대기 중 요청. 최신 순이며 종료된 그룹의 요청은 뺀다. */
+    List<JoinRequestView> myJoinRequests(UUID meId);
+
+    /** 내가 보낸 대기 중 요청을 취소한다. */
+    void cancelJoinRequest(UUID meId, UUID spaceId, UUID requestId);
+
+    /** 방장이 그룹에 들어온 대기 중 요청을 본다. 오래된 순. */
+    List<PendingJoinRequestView> joinRequests(UUID meId, UUID spaceId);
+
+    /** 방장이 대기 중 요청을 수락하거나 거절한다. 수락하면 요청자가 멤버가 된다. */
+    void decideJoinRequest(UUID meId, UUID spaceId, UUID requestId, boolean approve);
 
     /** 활성 멤버 목록. 방장이 먼저, 나머지는 가입 순. */
     List<MemberView> members(UUID meId, UUID spaceId);
@@ -38,6 +53,20 @@ public interface GroupSpaceUseCase {
     }
 
     record IssuedCode(String code, Instant expiresAt) {
+    }
+
+    /** 요청자에게 보이는 참여 요청. status는 PENDING / APPROVED / REJECTED / CANCELED */
+    record JoinRequestView(UUID id, UUID spaceId, String spaceName, String status, long createdAt) {
+    }
+
+    /** 방장에게 보이는 대기 중 요청과 요청자 정보 */
+    record PendingJoinRequestView(
+            UUID id,
+            UUID userId,
+            String handle,
+            String nickname,
+            String profileImageUrl,
+            long createdAt) {
     }
 
     record MemberView(

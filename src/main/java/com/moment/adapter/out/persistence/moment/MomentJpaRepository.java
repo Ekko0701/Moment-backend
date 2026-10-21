@@ -57,7 +57,7 @@ interface MomentJpaRepository extends JpaRepository<MomentEntity, UUID> {
             @Param("excludeAuthorId") UUID excludeAuthorId);
 
     // 아래 *Excluding 쿼리의 :excluded는 비어 있으면 안 된다(빈 IN 목록은 DB마다 동작이 다르다).
-    // 어댑터가 빈 경우를 기존 쿼리로 분기한다.
+    // 비어 있으면 어댑터가 제외 조건 없는 쿼리를 쓴다.
 
     @Query(
             "SELECT m FROM MomentEntity m "
@@ -93,29 +93,13 @@ interface MomentJpaRepository extends JpaRepository<MomentEntity, UUID> {
     Optional<MomentEntity> findLatestBySpaceExcludingAuthors(@Param("spaceId") UUID spaceId,
             @Param("excluded") Collection<UUID> excluded);
 
-    // 작성자별 최신 1건. 같은 시각에 두 건이 있으면 둘 다 반환되므로 어댑터가 id로 하나를 고른다.
     @Query(
             "SELECT m FROM MomentEntity m "
                     + "WHERE m.spaceId = :spaceId "
+                    + "  AND m.authorId = :authorId "
                     + "  AND m.deletedAt IS NULL "
-                    + "  AND m.authorId IN :authorIds "
-                    + "  AND m.createdAt = (SELECT MAX(m2.createdAt) FROM MomentEntity m2 "
-                    + "                     WHERE m2.spaceId = m.spaceId "
-                    + "                       AND m2.authorId = m.authorId "
-                    + "                       AND m2.deletedAt IS NULL)")
-    List<MomentEntity> findLatestPerAuthor(@Param("spaceId") UUID spaceId,
-            @Param("authorIds") Collection<UUID> authorIds);
-
-    // 스페이스별 최신 1건(제외 작성자 반영). 동시각 중복은 어댑터가 id로 하나를 고른다.
-    @Query(
-            "SELECT m FROM MomentEntity m "
-                    + "WHERE m.spaceId IN :spaceIds "
-                    + "  AND m.deletedAt IS NULL "
-                    + "  AND m.authorId NOT IN :excluded "
-                    + "  AND m.createdAt = (SELECT MAX(m2.createdAt) FROM MomentEntity m2 "
-                    + "                     WHERE m2.spaceId = m.spaceId "
-                    + "                       AND m2.deletedAt IS NULL "
-                    + "                       AND m2.authorId NOT IN :excluded)")
-    List<MomentEntity> findLatestPerSpace(@Param("spaceIds") Collection<UUID> spaceIds,
-            @Param("excluded") Collection<UUID> excluded);
+                    + "ORDER BY m.createdAt DESC, m.id DESC "
+                    + "LIMIT 1")
+    Optional<MomentEntity> findLatestBySpaceAndAuthor(@Param("spaceId") UUID spaceId,
+            @Param("authorId") UUID authorId);
 }

@@ -86,6 +86,16 @@ class SpacePersistenceAdapter implements SpaceRepositoryPort {
     }
 
     @Override
+    public List<SpaceMember> findActiveMembersBySpaceIds(Collection<UUID> spaceIds) {
+        if (spaceIds.isEmpty()) {
+            return List.of();
+        }
+        return memberJpaRepository.findBySpaceIdInAndLeftAtIsNull(spaceIds).stream()
+                .map(SpaceMemberEntity::toDomain)
+                .toList();
+    }
+
+    @Override
     public List<SpaceMember> findActiveMembershipsByUserId(UUID userId) {
         return memberJpaRepository.findByUserIdAndLeftAtIsNull(userId).stream()
                 .map(SpaceMemberEntity::toDomain)

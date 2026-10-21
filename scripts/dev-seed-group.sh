@@ -10,6 +10,10 @@
 set -euo pipefail
 
 BASE="${1:-http://localhost:8080}"
+case "$BASE" in
+  http://localhost:*|http://127.0.0.1:*) ;;
+  *) echo "로컬 서버(localhost, 127.0.0.1)에만 쓸 수 있어요: $BASE" >&2; exit 1 ;;
+esac
 PASS="devpass123"
 
 json() { python3 -c "import sys,json; d=json.load(sys.stdin); print(eval('d' + sys.argv[1]))" "$1"; }
@@ -44,12 +48,14 @@ INV=$(call GET "/v1/invitations?received=true" "$OWNER" | json "['data'][0]['id'
 call PATCH "/v1/invitations/$INV" "$OWNER" '{"action":"accept"}' > /dev/null
 PAIR=$(call GET /v1/spaces/me "$OWNER" | json "['data'][0]['id']")
 
-# 그룹: 방장이 만들고 멤버·파트너가 참여
+# 그룹: 방장이 만들고, 멤버·파트너가 코드로 참여를 요청하면 방장이 수락
 CREATED=$(call POST /v1/groups "$OWNER" '{"name":"주말 산책"}')
 GROUP=$(echo "$CREATED" | json "['data']['space']['id']")
 GCODE=$(echo "$CREATED" | json "['data']['inviteCode']")
-call POST /v1/groups/join "$MEMBER" "{\"code\":\"$GCODE\"}" > /dev/null
-call POST /v1/groups/join "$PARTNER" "{\"code\":\"$GCODE\"}" > /dev/null
+for JOINER in "$MEMBER" "$PARTNER"; do
+  REQ=$(call POST /v1/groups/join "$JOINER" "{\"code\":\"$GCODE\"}" | json "['data']['id']")
+  call PATCH "/v1/groups/$GROUP/join-requests/$REQ" "$OWNER" '{"action":"approve"}' > /dev/null
+done
 
 # 모먼트
 call POST /v1/moments "$PARTNER" "{\"spaceId\":\"$PAIR\",\"imageUrl\":null,\"text\":\"오늘 저녁에 산책 어때? 🌙\"}" > /dev/null

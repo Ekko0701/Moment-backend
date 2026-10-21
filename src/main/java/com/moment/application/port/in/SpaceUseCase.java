@@ -33,7 +33,8 @@ public interface SpaceUseCase {
             List<MemberView> members,
             String myRole,
             int maxMembers,
-            boolean notificationsEnabled) {
+            boolean notificationsEnabled,
+            int pendingJoinRequestCount) {
     }
 
     record MemberView(

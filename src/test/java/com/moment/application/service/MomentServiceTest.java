@@ -169,6 +169,30 @@ class MomentServiceTest {
     }
 
     @Test
+    @DisplayName("타임라인: 나와 차단 관계인 사용자의 리액션은 집계에서 뺀다")
+    void timeline_hidesBlockedReactors() {
+        UUID blockedId = UUID.randomUUID();
+        UUID friendId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+        SpaceMember myMem = new SpaceMember(UUID.randomUUID(), spaceId, meId, MemberRole.MEMBER, Instant.now(), null);
+        Moment moment = Moment.create(UUID.randomUUID(), spaceId, authorId, null, "글", Instant.now());
+        when(spaceRepository.findActiveMembershipsByUserId(meId)).thenReturn(List.of(myMem));
+        when(blockPort.findBlockedUserIdsEitherDirection(meId)).thenReturn(Set.of(blockedId));
+        when(momentRepository.findTimeline(eq(spaceId), any(), any(), anyInt(), any()))
+                .thenReturn(new MomentRepositoryPort.TimelinePage(List.of(moment), null, false));
+        when(userRepository.findAllByIds(any())).thenReturn(List.of(new User(authorId, "author", "작성자", null,
+                AuthProvider.APPLE, null, null, null, true, null, UserStatus.ACTIVE, Instant.now(), Instant.now())));
+        when(reactionRepository.findAllByMomentIdIn(any())).thenReturn(List.of(
+                com.moment.domain.moment.Reaction.create(UUID.randomUUID(), moment.id(), blockedId, "❤️", Instant.now()),
+                com.moment.domain.moment.Reaction.create(UUID.randomUUID(), moment.id(), friendId, "❤️", Instant.now())));
+
+        var page = service.timeline(meId, spaceId, null, 20);
+
+        assertThat(page.items().get(0).reactions()).singleElement()
+                .satisfies(r -> assertThat(r.count()).isEqualTo(1));
+    }
+
+    @Test
     @DisplayName("최신 1건(excludeMine): 나와 차단 관계 작성자를 함께 제외한다")
     void latest_excludesMeAndBlocked() {
         UUID blockedId = UUID.randomUUID();

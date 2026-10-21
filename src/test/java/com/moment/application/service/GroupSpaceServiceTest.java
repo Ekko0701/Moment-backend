@@ -10,8 +10,11 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.moment.application.port.in.GroupSpaceUseCase.CreatedGroup;
+import com.moment.application.port.in.GroupSpaceUseCase.JoinRequestView;
 import com.moment.application.port.in.GroupSpaceUseCase.MemberView;
+import com.moment.application.port.in.GroupSpaceUseCase.PendingJoinRequestView;
 import com.moment.application.port.out.GroupInviteCodePort;
+import com.moment.application.port.out.GroupJoinRequestPort;
 import com.moment.application.port.out.InviteCodePort;
 import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.PushPort.PushMessage;
@@ -21,6 +24,8 @@ import com.moment.common.exception.BusinessException;
 import com.moment.common.exception.ErrorCode;
 import com.moment.config.MomentProperties;
 import com.moment.domain.space.GroupInviteCode;
+import com.moment.domain.space.GroupJoinRequest;
+import com.moment.domain.space.JoinRequestStatus;
 import com.moment.domain.space.MemberRole;
 import com.moment.domain.space.Space;
 import com.moment.domain.space.SpaceMember;
@@ -52,9 +57,11 @@ class GroupSpaceServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-10-21T00:00:00Z");
     private static final int MAX = 6;
+    private static final int MAX_GROUPS = 10;
 
     @Mock private SpaceRepositoryPort spaceRepository;
     @Mock private GroupInviteCodePort codePort;
+    @Mock private GroupJoinRequestPort joinRequestPort;
     @Mock private InviteCodePort inviteCodePort;
     @Mock private UserRepositoryPort userRepository;
     @Mock private PushPort pushPort;
@@ -68,10 +75,11 @@ class GroupSpaceServiceTest {
                 new MomentProperties.Jwt("secret", Duration.ofMinutes(30), Duration.ofDays(30)),
                 new MomentProperties.Auth(MomentProperties.Auth.Apple.stub()),
                 new MomentProperties.Invite(Duration.ofHours(24), Duration.ofHours(72), Duration.ofDays(7)),
-                new MomentProperties.Policy(true, MAX),
+                new MomentProperties.Policy(true, MAX, MAX_GROUPS),
                 MomentProperties.Storage.stub());
-        service = new GroupSpaceService(spaceRepository, codePort, userRepository, pushPort,
-                new InviteCodeGenerator(inviteCodePort, codePort), properties, Clock.fixed(NOW, ZoneOffset.UTC));
+        Clock clock = Clock.fixed(NOW, ZoneOffset.UTC);
+        service = new GroupSpaceService(spaceRepository, codePort, joinRequestPort, userRepository, pushPort,
+                new InviteCodeGenerator(inviteCodePort, codePort), new GroupJoinAttemptLimiter(clock), properties, clock);
         meId = UUID.randomUUID();
     }
 
@@ -135,7 +143,7 @@ class GroupSpaceServiceTest {
     @DisplayName("재발급: 방장이 아니면 FORBIDDEN")
     void reissue_notOwner_forbidden() {
         Space space = group();
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findMember(space.id(), meId))
                 .thenReturn(Optional.of(member(space, meId, MemberRole.MEMBER, 100)));
 
@@ -148,7 +156,7 @@ class GroupSpaceServiceTest {
     @DisplayName("재발급: 이전 코드를 먼저 지우고 새 코드를 저장한다")
     void reissue_owner_deletesThenSaves() {
         Space space = group();
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findMember(space.id(), meId))
                 .thenReturn(Optional.of(member(space, meId, MemberRole.OWNER, 100)));
         when(codePort.save(any())).thenAnswer(inv -> inv.getArgument(0));
@@ -160,108 +168,326 @@ class GroupSpaceServiceTest {
         order.verify(codePort).save(any());
     }
 
-    // ---------- join
+    // ---------- group limit
 
-    @Test
-    @DisplayName("참여: 만료된 코드는 INVALID_REQUEST")
-    void join_expiredCode_invalid() {
-        Space space = group();
-        when(codePort.findByCode("ABC123")).thenReturn(Optional.of(code(space, NOW.minusSeconds(1))));
-
-        assertThatThrownBy(() -> service.join(meId, "abc123"))
-                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REQUEST);
-        verify(spaceRepository, never()).saveMember(any());
+    private void stubGroupCount(UUID userId, int groups) {
+        List<Space> spaces = IntStream.range(0, groups).mapToObj(i -> group()).toList();
+        when(spaceRepository.findActiveMembershipsByUserId(userId)).thenReturn(spaces.stream()
+                .map(sp -> member(sp, userId, MemberRole.MEMBER, 100))
+                .toList());
+        when(spaceRepository.findAllByIds(any())).thenReturn(spaces);
     }
 
     @Test
-    @DisplayName("참여: 종료된 그룹의 코드는 INVALID_REQUEST")
-    void join_inactiveGroup_invalid() {
+    @DisplayName("생성: 이미 그룹 10개에 속해 있으면 CONFLICT이고 만들지 않는다")
+    void create_groupLimit_conflict() {
+        stubGroupCount(meId, MAX_GROUPS);
+
+        assertThatThrownBy(() -> service.create(meId, "열한번째"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("그룹은 최대 10개까지 참여할 수 있어요.");
+        verify(spaceRepository, never()).save(any());
+    }
+
+    // ---------- join request
+
+    private Space stubValidCode() {
+        Space space = group();
+        when(codePort.findByCode("ABC123")).thenReturn(Optional.of(code(space, NOW.plusSeconds(60))));
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
+        return space;
+    }
+
+    @Test
+    @DisplayName("참여 요청: 만료된 코드는 INVALID_REQUEST이고 요청을 만들지 않는다")
+    void requestJoin_expiredCode_invalid() {
+        Space space = group();
+        when(codePort.findByCode("ABC123")).thenReturn(Optional.of(code(space, NOW.minusSeconds(1))));
+
+        assertThatThrownBy(() -> service.requestJoin(meId, "abc123"))
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REQUEST);
+        verify(joinRequestPort, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("참여 요청: 틀린 코드를 5번 넣으면 올바른 코드도 TOO_MANY_REQUESTS로 막힌다")
+    void requestJoin_fiveFailures_locks() {
+        when(codePort.findByCode("WRONG1")).thenReturn(Optional.empty());
+        for (int i = 0; i < 5; i++) {
+            assertThatThrownBy(() -> service.requestJoin(meId, "WRONG1"))
+                    .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REQUEST);
+        }
+
+        assertThatThrownBy(() -> service.requestJoin(meId, "ABC123"))
+                .extracting("errorCode").isEqualTo(ErrorCode.TOO_MANY_REQUESTS);
+        verify(codePort, never()).findByCode("ABC123");
+
+        // 다른 사용자는 영향을 받지 않는다
+        when(codePort.findByCode("WRONG2")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.requestJoin(UUID.randomUUID(), "WRONG2"))
+                .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REQUEST);
+    }
+
+    @Test
+    @DisplayName("참여 요청: 종료된 그룹의 코드는 INVALID_REQUEST")
+    void requestJoin_inactiveGroup_invalid() {
         Space space = group().deactivate();
         when(codePort.findByCode("ABC123")).thenReturn(Optional.of(code(space, NOW.plusSeconds(60))));
         when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
 
-        assertThatThrownBy(() -> service.join(meId, "ABC123"))
+        assertThatThrownBy(() -> service.requestJoin(meId, "ABC123"))
                 .extracting("errorCode").isEqualTo(ErrorCode.INVALID_REQUEST);
     }
 
     @Test
-    @DisplayName("참여: 이미 활성 멤버면 CONFLICT")
-    void join_alreadyMember_conflict() {
-        Space space = group();
-        when(codePort.findByCode("ABC123")).thenReturn(Optional.of(code(space, NOW.plusSeconds(60))));
-        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
+    @DisplayName("참여 요청: 이미 활성 멤버면 CONFLICT")
+    void requestJoin_alreadyMember_conflict() {
+        Space space = stubValidCode();
         when(spaceRepository.findMember(space.id(), meId))
                 .thenReturn(Optional.of(member(space, meId, MemberRole.MEMBER, 100)));
 
-        assertThatThrownBy(() -> service.join(meId, "ABC123"))
+        assertThatThrownBy(() -> service.requestJoin(meId, "ABC123"))
                 .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
     }
 
     @Test
-    @DisplayName("참여: 활성 멤버가 정원과 같으면 CONFLICT이고 저장하지 않는다")
-    void join_full_conflict() {
-        Space space = group();
-        List<SpaceMember> full = IntStream.range(0, MAX)
-                .mapToObj(i -> member(space, UUID.randomUUID(), i == 0 ? MemberRole.OWNER : MemberRole.MEMBER, 100 - i))
-                .toList();
-        when(codePort.findByCode("ABC123")).thenReturn(Optional.of(code(space, NOW.plusSeconds(60))));
-        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
+    @DisplayName("참여 요청: 같은 그룹에 대기 중 요청이 있으면 새로 만들지 않고 그 요청을 돌려준다")
+    void requestJoin_existingPending_returnsSame() {
+        Space space = stubValidCode();
+        GroupJoinRequest pending = GroupJoinRequest.request(UUID.randomUUID(), space.id(), meId, NOW.minusSeconds(30));
         when(spaceRepository.findMember(space.id(), meId)).thenReturn(Optional.empty());
-        when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(full);
+        when(joinRequestPort.findPending(space.id(), meId)).thenReturn(Optional.of(pending));
 
-        assertThatThrownBy(() -> service.join(meId, "ABC123"))
-                .isInstanceOf(BusinessException.class)
-                .hasMessage("정원이 찼어요.");
-        verify(spaceRepository, never()).saveMember(any());
+        JoinRequestView view = service.requestJoin(meId, "ABC123");
+
+        assertThat(view.id()).isEqualTo(pending.id());
+        verify(joinRequestPort, never()).save(any());
+        verify(pushPort, never()).send(any());
     }
 
     @Test
-    @DisplayName("참여: 처음이면 MEMBER로 추가하고, 알림을 켠 기존 멤버에게만 MEMBER_JOINED를 보낸다")
-    void join_newMember_addsAndNotifiesUnmuted() {
-        Space space = group();
+    @DisplayName("참여 요청: 정원이 찼으면 CONFLICT이고 요청을 만들지 않는다")
+    void requestJoin_full_conflict() {
+        Space space = stubValidCode();
+        List<SpaceMember> full = IntStream.range(0, MAX)
+                .mapToObj(i -> member(space, UUID.randomUUID(), i == 0 ? MemberRole.OWNER : MemberRole.MEMBER, 100 - i))
+                .toList();
+        when(spaceRepository.findMember(space.id(), meId)).thenReturn(Optional.empty());
+        when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(full);
+
+        assertThatThrownBy(() -> service.requestJoin(meId, "ABC123"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("정원이 찼어요.");
+        verify(joinRequestPort, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("참여 요청: 요청자가 이미 그룹 10개에 속해 있으면 CONFLICT")
+    void requestJoin_groupLimit_conflict() {
+        Space space = stubValidCode();
+        when(spaceRepository.findMember(space.id(), meId)).thenReturn(Optional.empty());
+        when(spaceRepository.findActiveMembersBySpaceId(space.id()))
+                .thenReturn(List.of(member(space, UUID.randomUUID(), MemberRole.OWNER, 300)));
+        stubGroupCount(meId, MAX_GROUPS);
+
+        assertThatThrownBy(() -> service.requestJoin(meId, "ABC123"))
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+        verify(joinRequestPort, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("참여 요청: 멤버로 추가하지 않고 PENDING 요청만 만들며, 방장에게만 JOIN_REQUESTED를 보낸다")
+    void requestJoin_createsPendingAndNotifiesOwner() {
+        Space space = stubValidCode();
         UUID ownerId = UUID.randomUUID();
         SpaceMember owner = member(space, ownerId, MemberRole.OWNER, 300);
-        SpaceMember muted = member(space, UUID.randomUUID(), MemberRole.MEMBER, 200).withNotifications(false);
-        when(codePort.findByCode("ABC123")).thenReturn(Optional.of(code(space, NOW.plusSeconds(60))));
-        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
+        SpaceMember other = member(space, UUID.randomUUID(), MemberRole.MEMBER, 200);
         when(spaceRepository.findMember(space.id(), meId)).thenReturn(Optional.empty());
-        when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of(owner, muted));
+        when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of(owner, other));
+        when(joinRequestPort.save(any())).thenAnswer(inv -> inv.getArgument(0));
         when(userRepository.findById(meId)).thenReturn(Optional.of(user(meId, "새친구")));
 
-        UUID joined = service.join(meId, " abc123 ");
+        JoinRequestView view = service.requestJoin(meId, " abc123 ");
 
-        assertThat(joined).isEqualTo(space.id());
-        ArgumentCaptor<SpaceMember> captor = ArgumentCaptor.forClass(SpaceMember.class);
-        verify(spaceRepository).saveMember(captor.capture());
-        assertThat(captor.getValue().userId()).isEqualTo(meId);
-        assertThat(captor.getValue().role()).isEqualTo(MemberRole.MEMBER);
-        assertThat(captor.getValue().isActive()).isTrue();
+        assertThat(view.status()).isEqualTo("PENDING");
+        assertThat(view.spaceName()).isEqualTo("주말 산책");
+        verify(spaceRepository, never()).saveMember(any());
 
         ArgumentCaptor<PushMessage> push = ArgumentCaptor.forClass(PushMessage.class);
         verify(pushPort, times(1)).send(push.capture());
         assertThat(push.getValue().targetUserId()).isEqualTo(ownerId);
-        assertThat(push.getValue().type()).isEqualTo("MEMBER_JOINED");
+        assertThat(push.getValue().type()).isEqualTo("JOIN_REQUESTED");
+    }
+
+    // ---------- decide
+
+    private GroupJoinRequest stubPendingRequest(Space space, UUID requesterId) {
+        GroupJoinRequest request = GroupJoinRequest.request(UUID.randomUUID(), space.id(), requesterId, NOW.minusSeconds(60));
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findMember(space.id(), meId))
+                .thenReturn(Optional.of(member(space, meId, MemberRole.OWNER, 900)));
+        when(joinRequestPort.findById(request.id())).thenReturn(Optional.of(request));
+        return request;
     }
 
     @Test
-    @DisplayName("참여: 나갔던 사람은 같은 멤버 행을 재활성화한다(새 행을 만들지 않음)")
-    void join_formerMember_reactivatesSameRow() {
+    @DisplayName("수락: 방장이 아니면 FORBIDDEN")
+    void decide_notOwner_forbidden() {
         Space space = group();
-        SpaceMember left = member(space, meId, MemberRole.OWNER, 500).leave(NOW.minusSeconds(100));
-        when(codePort.findByCode("ABC123")).thenReturn(Optional.of(code(space, NOW.plusSeconds(60))));
         when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
-        when(spaceRepository.findMember(space.id(), meId)).thenReturn(Optional.of(left));
-        when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of());
+        when(spaceRepository.findMember(space.id(), meId))
+                .thenReturn(Optional.of(member(space, meId, MemberRole.MEMBER, 100)));
 
-        service.join(meId, "ABC123");
+        assertThatThrownBy(() -> service.decideJoinRequest(meId, space.id(), UUID.randomUUID(), true))
+                .extracting("errorCode").isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("수락: 요청자를 MEMBER로 추가하고 요청을 APPROVED로 바꾼다. 알림은 요청자와, 알림을 켠 다른 멤버에게 간다")
+    void decide_approve_addsMemberAndNotifies() {
+        Space space = group();
+        UUID requesterId = UUID.randomUUID();
+        GroupJoinRequest request = stubPendingRequest(space, requesterId);
+        SpaceMember owner = member(space, meId, MemberRole.OWNER, 900);
+        UUID otherId = UUID.randomUUID();
+        SpaceMember other = member(space, otherId, MemberRole.MEMBER, 500);
+        SpaceMember muted = member(space, UUID.randomUUID(), MemberRole.MEMBER, 400).withNotifications(false);
+        when(userRepository.findById(requesterId)).thenReturn(Optional.of(user(requesterId, "새친구")));
+        when(spaceRepository.findMember(space.id(), requesterId)).thenReturn(Optional.empty());
+        when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of(owner, other, muted));
+
+        service.decideJoinRequest(meId, space.id(), request.id(), true);
+
+        ArgumentCaptor<SpaceMember> memberCaptor = ArgumentCaptor.forClass(SpaceMember.class);
+        verify(spaceRepository).saveMember(memberCaptor.capture());
+        assertThat(memberCaptor.getValue().userId()).isEqualTo(requesterId);
+        assertThat(memberCaptor.getValue().role()).isEqualTo(MemberRole.MEMBER);
+
+        ArgumentCaptor<GroupJoinRequest> requestCaptor = ArgumentCaptor.forClass(GroupJoinRequest.class);
+        verify(joinRequestPort).save(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().status()).isEqualTo(JoinRequestStatus.APPROVED);
+
+        ArgumentCaptor<PushMessage> push = ArgumentCaptor.forClass(PushMessage.class);
+        verify(pushPort, times(2)).send(push.capture());
+        assertThat(push.getAllValues()).extracting(PushMessage::targetUserId).containsExactly(otherId, requesterId);
+        assertThat(push.getAllValues()).extracting(PushMessage::type).containsExactly("MEMBER_JOINED", "JOIN_APPROVED");
+    }
+
+    @Test
+    @DisplayName("수락: 나갔거나 내보내졌던 사람은 같은 멤버 행을 재활성화한다")
+    void decide_approve_formerMember_reactivatesSameRow() {
+        Space space = group();
+        UUID requesterId = UUID.randomUUID();
+        GroupJoinRequest request = stubPendingRequest(space, requesterId);
+        SpaceMember left = member(space, requesterId, MemberRole.MEMBER, 500).leave(NOW.minusSeconds(100));
+        when(userRepository.findById(requesterId)).thenReturn(Optional.of(user(requesterId, "돌아온")));
+        when(spaceRepository.findMember(space.id(), requesterId)).thenReturn(Optional.of(left));
+        when(spaceRepository.findActiveMembersBySpaceId(space.id()))
+                .thenReturn(List.of(member(space, meId, MemberRole.OWNER, 900)));
+
+        service.decideJoinRequest(meId, space.id(), request.id(), true);
 
         ArgumentCaptor<SpaceMember> captor = ArgumentCaptor.forClass(SpaceMember.class);
         verify(spaceRepository).saveMember(captor.capture());
-        SpaceMember saved = captor.getValue();
-        assertThat(saved.id()).isEqualTo(left.id());
-        assertThat(saved.isActive()).isTrue();
-        assertThat(saved.role()).isEqualTo(MemberRole.MEMBER);
-        assertThat(saved.joinedAt()).isEqualTo(NOW);
+        assertThat(captor.getValue().id()).isEqualTo(left.id());
+        assertThat(captor.getValue().isActive()).isTrue();
+        assertThat(captor.getValue().joinedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    @DisplayName("수락: 정원이 찼으면 CONFLICT이고 멤버도 요청 상태도 바뀌지 않는다")
+    void decide_approve_full_conflict() {
+        Space space = group();
+        UUID requesterId = UUID.randomUUID();
+        GroupJoinRequest request = stubPendingRequest(space, requesterId);
+        List<SpaceMember> full = IntStream.range(0, MAX)
+                .mapToObj(i -> member(space, UUID.randomUUID(), MemberRole.MEMBER, 100 - i))
+                .toList();
+        when(userRepository.findById(requesterId)).thenReturn(Optional.of(user(requesterId, "새친구")));
+        when(spaceRepository.findMember(space.id(), requesterId)).thenReturn(Optional.empty());
+        when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(full);
+
+        assertThatThrownBy(() -> service.decideJoinRequest(meId, space.id(), request.id(), true))
+                .hasMessage("정원이 찼어요.");
+        verify(spaceRepository, never()).saveMember(any());
+        verify(joinRequestPort, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("거절: 요청을 REJECTED로 바꾸고 요청자에게 JOIN_REJECTED를 보낸다. 멤버는 추가하지 않는다")
+    void decide_reject_marksRejected() {
+        Space space = group();
+        UUID requesterId = UUID.randomUUID();
+        GroupJoinRequest request = stubPendingRequest(space, requesterId);
+
+        service.decideJoinRequest(meId, space.id(), request.id(), false);
+
+        ArgumentCaptor<GroupJoinRequest> requestCaptor = ArgumentCaptor.forClass(GroupJoinRequest.class);
+        verify(joinRequestPort).save(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().status()).isEqualTo(JoinRequestStatus.REJECTED);
+        verify(spaceRepository, never()).saveMember(any());
+
+        ArgumentCaptor<PushMessage> push = ArgumentCaptor.forClass(PushMessage.class);
+        verify(pushPort).send(push.capture());
+        assertThat(push.getValue().targetUserId()).isEqualTo(requesterId);
+        assertThat(push.getValue().type()).isEqualTo("JOIN_REJECTED");
+    }
+
+    @Test
+    @DisplayName("수락·거절: 이미 처리된 요청이면 CONFLICT")
+    void decide_alreadyDecided_conflict() {
+        Space space = group();
+        GroupJoinRequest canceled = GroupJoinRequest.request(UUID.randomUUID(), space.id(), UUID.randomUUID(), NOW)
+                .cancel(NOW);
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findMember(space.id(), meId))
+                .thenReturn(Optional.of(member(space, meId, MemberRole.OWNER, 900)));
+        when(joinRequestPort.findById(canceled.id())).thenReturn(Optional.of(canceled));
+
+        assertThatThrownBy(() -> service.decideJoinRequest(meId, space.id(), canceled.id(), true))
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+        assertThatThrownBy(() -> service.decideJoinRequest(meId, space.id(), canceled.id(), false))
+                .extracting("errorCode").isEqualTo(ErrorCode.CONFLICT);
+        verify(spaceRepository, never()).saveMember(any());
+    }
+
+    @Test
+    @DisplayName("취소: 내 요청만 취소할 수 있고, 취소하면 CANCELED가 된다")
+    void cancel_onlyOwnRequest() {
+        Space space = group();
+        GroupJoinRequest mine = GroupJoinRequest.request(UUID.randomUUID(), space.id(), meId, NOW);
+        GroupJoinRequest others = GroupJoinRequest.request(UUID.randomUUID(), space.id(), UUID.randomUUID(), NOW);
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
+        when(joinRequestPort.findById(mine.id())).thenReturn(Optional.of(mine));
+        when(joinRequestPort.findById(others.id())).thenReturn(Optional.of(others));
+
+        assertThatThrownBy(() -> service.cancelJoinRequest(meId, space.id(), others.id()))
+                .extracting("errorCode").isEqualTo(ErrorCode.NOT_FOUND);
+
+        service.cancelJoinRequest(meId, space.id(), mine.id());
+        ArgumentCaptor<GroupJoinRequest> captor = ArgumentCaptor.forClass(GroupJoinRequest.class);
+        verify(joinRequestPort).save(captor.capture());
+        assertThat(captor.getValue().status()).isEqualTo(JoinRequestStatus.CANCELED);
+    }
+
+    @Test
+    @DisplayName("요청 목록: 방장에게 대기 중 요청을 보여주되 탈퇴한 사용자의 요청은 뺀다")
+    void joinRequests_hidesWithdrawnUsers() {
+        Space space = group();
+        UUID activeId = UUID.randomUUID();
+        UUID withdrawnId = UUID.randomUUID();
+        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findMember(space.id(), meId))
+                .thenReturn(Optional.of(member(space, meId, MemberRole.OWNER, 900)));
+        when(joinRequestPort.findPendingBySpaceId(space.id())).thenReturn(List.of(
+                GroupJoinRequest.request(UUID.randomUUID(), space.id(), activeId, NOW),
+                GroupJoinRequest.request(UUID.randomUUID(), space.id(), withdrawnId, NOW)));
+        when(userRepository.findAllByIds(any())).thenReturn(List.of(
+                user(activeId, "대기"), user(withdrawnId, "탈퇴").withdraw("del_00000000000", NOW)));
+
+        List<PendingJoinRequestView> requests = service.joinRequests(meId, space.id());
+
+        assertThat(requests).extracting(PendingJoinRequestView::userId).containsExactly(activeId);
     }
 
     // ---------- members
@@ -350,9 +576,15 @@ class GroupSpaceServiceTest {
     void setNotifications_updatesMyMembership() {
         Space space = group();
         SpaceMember me = member(space, meId, MemberRole.MEMBER, 100);
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findMember(space.id(), meId)).thenReturn(Optional.of(me));
 
         service.setNotifications(meId, space.id(), false);
+
+        // 내보내기·방장 승계와 직렬화되도록 스페이스 행을 먼저 잠근다
+        InOrder order = inOrder(spaceRepository);
+        order.verify(spaceRepository).findByIdForUpdate(space.id());
+        order.verify(spaceRepository).findMember(space.id(), meId);
 
         ArgumentCaptor<SpaceMember> captor = ArgumentCaptor.forClass(SpaceMember.class);
         verify(spaceRepository).saveMember(captor.capture());

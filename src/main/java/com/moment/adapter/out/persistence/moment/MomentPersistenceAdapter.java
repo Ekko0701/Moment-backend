@@ -6,9 +6,6 @@ import com.moment.domain.moment.Moment;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -80,12 +77,18 @@ class MomentPersistenceAdapter implements MomentRepositoryPort {
         return entity.map(MomentEntity::toDomain);
     }
 
+    // 작성자·스페이스마다 (space_id, author_id, created_at) / (space_id, created_at) 인덱스를 타는 1건 조회를 한다.
+    // 그룹 정원(6명)과 사용자당 그룹 수(10개)로 조회 횟수에 상한이 있고, 스페이스의 모든 모먼트를 훑지 않는다.
+
     @Override
     public List<Moment> findLatestPerAuthor(UUID spaceId, Collection<UUID> authorIds) {
-        if (authorIds.isEmpty()) {
-            return List.of();
-        }
-        return pickOnePer(jpaRepository.findLatestPerAuthor(spaceId, authorIds), Moment::authorId);
+        return authorIds.stream()
+                .distinct()
+                .map(authorId -> jpaRepository.findLatestBySpaceAndAuthor(spaceId, authorId))
+                .flatMap(Optional::stream)
+                .map(MomentEntity::toDomain)
+                .sorted(Comparator.comparing(Moment::createdAt).reversed())
+                .toList();
     }
 
     @Override
@@ -96,16 +99,11 @@ class MomentPersistenceAdapter implements MomentRepositoryPort {
         if (excludedAuthorIds.isEmpty()) {
             throw new IllegalArgumentException("excludedAuthorIds must not be empty");
         }
-        return pickOnePer(jpaRepository.findLatestPerSpace(spaceIds, excludedAuthorIds), Moment::spaceId);
-    }
-
-    // 같은 키(작성자 또는 스페이스)에 동시각 모먼트가 여럿이면 id가 가장 큰 것 하나만 남긴다.
-    private static List<Moment> pickOnePer(List<MomentEntity> entities, Function<Moment, UUID> key) {
-        Map<UUID, Moment> picked = entities.stream()
+        return spaceIds.stream()
+                .distinct()
+                .map(spaceId -> jpaRepository.findLatestBySpaceExcludingAuthors(spaceId, excludedAuthorIds))
+                .flatMap(Optional::stream)
                 .map(MomentEntity::toDomain)
-                .collect(Collectors.toMap(key, Function.identity(),
-                        (a, b) -> a.id().compareTo(b.id()) >= 0 ? a : b));
-        return picked.values().stream()
                 .sorted(Comparator.comparing(Moment::createdAt).reversed())
                 .toList();
     }

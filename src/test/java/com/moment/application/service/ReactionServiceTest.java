@@ -1,15 +1,18 @@
 package com.moment.application.service;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.moment.application.port.out.BlockPort;
 import com.moment.application.port.out.MomentRepositoryPort;
 import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.ReactionPort;
 import com.moment.application.port.out.SpaceRepositoryPort;
 import com.moment.application.port.out.UserRepositoryPort;
+import com.moment.common.exception.ErrorCode;
 import com.moment.domain.moment.Moment;
 import com.moment.domain.moment.Reaction;
 import com.moment.domain.user.User;
@@ -38,6 +41,7 @@ class ReactionServiceTest {
     @Mock private SpaceRepositoryPort spaceRepository;
     @Mock private UserRepositoryPort userRepository;
     @Mock private PushPort pushPort;
+    @Mock private BlockPort blockPort;
 
     private ReactionService service;
     private Clock clock;
@@ -47,9 +51,27 @@ class ReactionServiceTest {
     @BeforeEach
     void setUp() {
         clock = Clock.fixed(Instant.parse("2024-01-01T00:00:00Z"), ZoneId.of("UTC"));
-        service = new ReactionService(reactionRepository, momentRepository, spaceRepository, userRepository, pushPort, clock);
+        service = new ReactionService(reactionRepository, momentRepository, spaceRepository, userRepository, pushPort, blockPort, clock);
         meId = UUID.randomUUID();
         momentId = UUID.randomUUID();
+    }
+
+    @Test
+    @DisplayName("작성자와 차단 관계면 반응할 수 없고 저장도 알림도 하지 않는다")
+    void blockedAuthor_forbidden() {
+        UUID spaceId = UUID.randomUUID();
+        UUID authorId = UUID.randomUUID();
+        Moment moment = Moment.create(momentId, spaceId, authorId, "url", "text", clock.instant());
+        when(momentRepository.findById(momentId)).thenReturn(Optional.of(moment));
+        when(spaceRepository.findActiveMembershipsByUserId(meId)).thenReturn(List.of(
+                new SpaceMember(UUID.randomUUID(), spaceId, meId, com.moment.domain.space.MemberRole.MEMBER,
+                        clock.instant(), null)));
+        when(blockPort.existsBlockBetween(meId, authorId)).thenReturn(true);
+
+        assertThatThrownBy(() -> service.react(meId, momentId, "❤️"))
+                .extracting("errorCode").isEqualTo(ErrorCode.FORBIDDEN);
+        verify(reactionRepository, never()).save(any());
+        verify(pushPort, never()).send(any());
     }
 
     @Test

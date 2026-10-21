@@ -243,37 +243,32 @@ class ConcurrencyIntegrationTest {
         }
     }
 
-    // ---- Helpers ----
-
-    /**
-     * n개의 호출을 최대한 동시에 실행한다.
-     * ready barrier로 모든 worker가 출발선에 도달한 것을 확인한 뒤 start를 연다.
-     * Future.get()으로 worker 예외를 테스트 스레드로 전파하고, 결과 개수(n)를 보장한다.
-     */
-    // ---- 그룹 정원 동시 입장 ----
+    // ---- 그룹 정원 동시 수락 ----
 
     @Test
-    @DisplayName("정원 6 그룹에 7명이 동시에 같은 코드로 입장: 5명만 성공(방장 포함 6), 나머지는 CONFLICT")
-    void concurrentGroupJoin_neverExceedsCapacity() throws Exception {
+    @DisplayName("정원 6 그룹에 들어온 7건의 참여 요청을 방장이 동시에 수락: 5건만 성공(방장 포함 6), 나머지는 CONFLICT")
+    void concurrentGroupApprove_neverExceedsCapacity() throws Exception {
         for (int round = 0; round < REPEAT; round++) {
             RestClient client = client();
             String runId = UUID.randomUUID().toString();
             String ownerToken = login(client, "owner-" + runId, "방장").get("data").get("accessToken").asText();
-            JsonNode created = post(client, "/v1/groups", ownerToken, "{\"name\":\"동시입장\"}").get("data");
+            JsonNode created = post(client, "/v1/groups", ownerToken, "{\"name\":\"동시수락\"}").get("data");
             String spaceId = created.get("space").get("id").asText();
             String code = created.get("inviteCode").asText();
 
-            List<String> tokens = new ArrayList<>();
+            List<String> requestIds = new ArrayList<>();
             for (int i = 0; i < 7; i++) {
-                tokens.add(login(client, "joiner-" + i + "-" + runId, "참여" + i).get("data").get("accessToken").asText());
+                String token = login(client, "joiner-" + i + "-" + runId, "참여" + i).get("data").get("accessToken").asText();
+                requestIds.add(post(client, "/v1/groups/join", token, "{\"code\":\"" + code + "\"}")
+                        .get("data").get("id").asText());
             }
             AtomicInteger next = new AtomicInteger();
-            List<JsonNode> results = runConcurrently(tokens.size(), () ->
-                    post(client, "/v1/groups/join", tokens.get(next.getAndIncrement()),
-                            "{\"code\":\"" + code + "\"}"));
+            List<JsonNode> results = runConcurrently(requestIds.size(), () ->
+                    patch(client, "/v1/groups/" + spaceId + "/join-requests/" + requestIds.get(next.getAndIncrement()),
+                            ownerToken, "{\"action\":\"approve\"}"));
 
             assertThat(results.stream().filter(r -> r.get("success").asBoolean()))
-                    .as("round %d: 성공한 입장 수", round).hasSize(5);
+                    .as("round %d: 성공한 수락 수", round).hasSize(5);
             assertThat(results.stream().filter(r -> !r.get("success").asBoolean())
                     .map(r -> r.get("error").get("code").asText()))
                     .as("round %d: 실패는 모두 CONFLICT", round)
@@ -286,6 +281,13 @@ class ConcurrencyIntegrationTest {
         }
     }
 
+    // ---- Helpers ----
+
+    /**
+     * n개의 호출을 최대한 동시에 실행한다.
+     * ready barrier로 모든 worker가 출발선에 도달한 것을 확인한 뒤 start를 연다.
+     * Future.get()으로 worker 예외를 테스트 스레드로 전파하고, 결과 개수(n)를 보장한다.
+     */
     private List<JsonNode> runConcurrently(int n, Callable<JsonNode> call) throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(n);
         try {

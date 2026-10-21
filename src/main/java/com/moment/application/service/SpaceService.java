@@ -1,6 +1,7 @@
 package com.moment.application.service;
 
 import com.moment.application.port.in.SpaceUseCase;
+import com.moment.application.port.out.GroupJoinRequestPort;
 import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.PushPort.PushMessage;
 import com.moment.application.port.out.SpaceRepositoryPort;
@@ -30,6 +31,7 @@ public class SpaceService implements SpaceUseCase {
     private final UserRepositoryPort userRepository;
     private final PushPort pushPort;
     private final GroupMemberExit groupMemberExit;
+    private final GroupJoinRequestPort joinRequestPort;
     private final Clock clock;
 
     public SpaceService(
@@ -37,11 +39,13 @@ public class SpaceService implements SpaceUseCase {
             UserRepositoryPort userRepository,
             PushPort pushPort,
             GroupMemberExit groupMemberExit,
+            GroupJoinRequestPort joinRequestPort,
             Clock clock) {
         this.spaceRepository = spaceRepository;
         this.userRepository = userRepository;
         this.pushPort = pushPort;
         this.groupMemberExit = groupMemberExit;
+        this.joinRequestPort = joinRequestPort;
         this.clock = clock;
     }
 
@@ -49,9 +53,18 @@ public class SpaceService implements SpaceUseCase {
     @Transactional(readOnly = true)
     public List<SpaceView> getMySpaces(UUID meId) {
         List<SpaceMember> myMemberships = spaceRepository.findActiveMembershipsByUserId(meId);
-        Map<UUID, Space> spaces = spaceRepository.findAllByIds(myMemberships.stream().map(SpaceMember::spaceId).toList())
-                .stream()
+        List<UUID> spaceIds = myMemberships.stream().map(SpaceMember::spaceId).toList();
+        Map<UUID, Space> spaces = spaceRepository.findAllByIds(spaceIds).stream()
                 .collect(Collectors.toMap(Space::id, Function.identity()));
+
+        // 멤버·사용자·대기 요청 수를 스페이스 수와 무관하게 한 번씩만 조회한다
+        Map<UUID, List<SpaceMember>> membersBySpace = spaceRepository.findActiveMembersBySpaceIds(spaceIds).stream()
+                .collect(Collectors.groupingBy(SpaceMember::spaceId));
+        Map<UUID, User> users = findUsers(membersBySpace.values().stream().flatMap(List::stream).toList());
+        Map<UUID, Long> pendingCounts = joinRequestPort.countPendingBySpaceIds(myMemberships.stream()
+                .filter(m -> m.isOwner() && spaces.containsKey(m.spaceId()) && spaces.get(m.spaceId()).isGroup())
+                .map(SpaceMember::spaceId)
+                .toList());
 
         return myMemberships.stream()
                 .map(membership -> {
@@ -59,9 +72,10 @@ public class SpaceService implements SpaceUseCase {
                     if (space == null) {
                         throw new BusinessException(ErrorCode.NOT_FOUND, "스페이스를 찾을 수 없어요.");
                     }
-                    return buildView(space, membership);
+                    return buildView(space, membership, membersBySpace.getOrDefault(space.id(), List.of()), users,
+                            pendingCounts.getOrDefault(space.id(), 0L).intValue());
                 })
-                // 1:1을 맨 앞에 둔다 — 첫 스페이스를 연결 상대로 보는 이전 버전 앱과의 호환
+                // 1:1을 맨 앞에 둔다. 첫 스페이스를 연결 상대로 읽는 클라이언트도 1:1을 보게 된다
                 .sorted(Comparator.comparing((SpaceView v) -> !SpaceType.ONE_TO_ONE.name().equals(v.type()))
                         .thenComparingLong(SpaceView::connectedAt))
                 .toList();
@@ -75,15 +89,20 @@ public class SpaceService implements SpaceUseCase {
                 .orElseThrow(() -> new BusinessException(ErrorCode.FORBIDDEN, "스페이스 멤버가 아닙니다."));
         Space space = spaceRepository.findById(spaceId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "스페이스를 찾을 수 없어요."));
-        return buildView(space, membership);
+        List<SpaceMember> members = spaceRepository.findActiveMembersBySpaceId(space.id());
+        int pending = membership.isOwner() && space.isGroup()
+                ? joinRequestPort.countPendingBySpaceIds(List.of(space.id())).getOrDefault(space.id(), 0L).intValue()
+                : 0;
+        return buildView(space, membership, members, findUsers(members), pending);
     }
 
-    private SpaceView buildView(Space space, SpaceMember myMembership) {
-        List<SpaceMember> members = spaceRepository.findActiveMembersBySpaceId(space.id());
-        Map<UUID, User> users = userRepository.findAllByIds(members.stream().map(SpaceMember::userId).toList())
-                .stream()
+    private Map<UUID, User> findUsers(List<SpaceMember> members) {
+        return userRepository.findAllByIds(members.stream().map(SpaceMember::userId).distinct().toList()).stream()
                 .collect(Collectors.toMap(User::id, Function.identity()));
+    }
 
+    private SpaceView buildView(Space space, SpaceMember myMembership, List<SpaceMember> members,
+            Map<UUID, User> users, int pendingJoinRequestCount) {
         List<MemberView> memberViews = members.stream()
                 .map(member -> {
                     User user = users.get(member.userId());
@@ -108,7 +127,8 @@ public class SpaceService implements SpaceUseCase {
                 memberViews,
                 myMembership.role().name(),
                 space.maxMembers(),
-                myMembership.notificationsEnabled());
+                myMembership.notificationsEnabled(),
+                pendingJoinRequestCount);
     }
 
     @Override

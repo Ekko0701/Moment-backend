@@ -36,6 +36,8 @@ moment:
     single-space-enabled: true
     # 새 그룹 스페이스의 정원 (방장 포함)
     group-max-members: 6
+    # 한 사용자가 속할 수 있는 그룹 수 (만든 그룹과 참여한 그룹 합계)
+    group-max-per-user: 10
   storage:
     # 기본값 s3(운영 안전). dev 프로필이 stub으로 덮어쓴다.
     # s3 모드는 버킷/리전/공개 URL 미주입 시 기동 실패(fail-closed).

@@ -25,6 +25,9 @@ public interface SpaceRepositoryPort {
 
     List<SpaceMember> findActiveMembersBySpaceId(UUID spaceId);
 
+    /** 여러 스페이스의 활성 멤버를 한 번에 조회한다. */
+    List<SpaceMember> findActiveMembersBySpaceIds(Collection<UUID> spaceIds);
+
     List<SpaceMember> findActiveMembershipsByUserId(UUID userId);
 
     boolean existsActiveOneToOneMembership(UUID userId);

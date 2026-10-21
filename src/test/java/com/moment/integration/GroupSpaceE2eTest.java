@@ -18,7 +18,7 @@ import org.springframework.web.client.RestClient;
 /**
  * 그룹 스페이스 HTTP 흐름 E2E.
  *
- * <p>방장 A가 그룹을 만들고, B·C가 코드로 참여한다. 모먼트 공유 → 홈 요약의 나 제외 최신 1건 →
+ * <p>방장 A가 그룹을 만들고, B·C가 코드로 참여를 요청하면 A가 수락한다. 모먼트 공유 → 홈 요약의 나 제외 최신 1건 →
  * 멤버별 최신 1건 → 알림 끄기 → 나가기 → 방장 위임 → 코드 재발급으로 옛 코드 무효화까지 확인한다.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -49,7 +49,7 @@ class GroupSpaceE2eTest {
     }
 
     @Test
-    @DisplayName("그룹: 생성 → 코드 참여 → 모먼트 → 홈 요약·멤버별 최신 → 알림 끄기 → 나가기·위임 → 코드 재발급")
+    @DisplayName("그룹: 생성 → 코드 참여 요청·수락 → 모먼트 → 홈 요약·멤버별 최신 → 알림 끄기 → 나가기·위임 → 코드 재발급")
     void groupLifecycle() {
         // 1. A가 그룹 생성 → 방장, 6자리 코드
         JsonNode created = ok(post("/v1/groups", tokenA, "{\"name\":\"주말 산책\"}"));
@@ -60,11 +60,24 @@ class GroupSpaceE2eTest {
         assertThat(created.get("space").get("myRole").asText()).isEqualTo("OWNER");
         assertThat(created.get("space").get("maxMembers").asInt()).isEqualTo(6);
 
-        // 2. B는 소문자로 입력해도 참여, C도 참여. 같은 사람이 다시 참여하면 CONFLICT
-        JsonNode joinedB = ok(post("/v1/groups/join", tokenB, "{\"code\":\"" + code.toLowerCase() + "\"}"));
-        assertThat(joinedB.get("id").asText()).isEqualTo(spaceId);
-        assertThat(joinedB.get("myRole").asText()).isEqualTo("MEMBER");
-        ok(post("/v1/groups/join", tokenC, "{\"code\":\"" + code + "\"}"));
+        // 2. B는 소문자로 입력해도 요청이 생기고, 수락 전에는 멤버가 아니다. 같은 요청을 다시 보내면 같은 요청이 돌아온다
+        JsonNode requestB = ok(post("/v1/groups/join", tokenB, "{\"code\":\"" + code.toLowerCase() + "\"}"));
+        assertThat(requestB.get("spaceId").asText()).isEqualTo(spaceId);
+        assertThat(requestB.get("status").asText()).isEqualTo("PENDING");
+        assertThat(findSpaceOrNull(ok(get("/v1/spaces/me", tokenB)), spaceId)).isNull();
+        assertThat(ok(post("/v1/groups/join", tokenB, "{\"code\":\"" + code + "\"}")).get("id").asText())
+                .isEqualTo(requestB.get("id").asText());
+        assertThat(ok(get("/v1/groups/join-requests/me", tokenB)).get(0).get("spaceName").asText()).isEqualTo("주말 산책");
+
+        // 방장 홈에는 대기 요청 수가 보이고, 요청 목록은 방장만 볼 수 있다
+        assertThat(findSpace(ok(get("/v1/spaces/me", tokenA)), spaceId).get("pendingJoinRequestCount").asInt())
+                .isEqualTo(1);
+        assertThat(errorCode(get("/v1/groups/" + spaceId + "/join-requests", tokenB))).isEqualTo("FORBIDDEN");
+
+        // A가 B를 수락하면 B는 MEMBER. C도 요청·수락. 이미 멤버인 B가 다시 요청하면 CONFLICT
+        approve(tokenA, spaceId, requestB.get("id").asText());
+        assertThat(findSpace(ok(get("/v1/spaces/me", tokenB)), spaceId).get("myRole").asText()).isEqualTo("MEMBER");
+        joinAndApprove(tokenC, tokenA, code, spaceId);
         assertThat(errorCode(post("/v1/groups/join", tokenB, "{\"code\":\"" + code + "\"}"))).isEqualTo("CONFLICT");
 
         // 3. 멤버는 현재 코드를 조회할 수 있지만 재발급은 방장만
@@ -101,17 +114,22 @@ class GroupSpaceE2eTest {
         ok(delete("/v1/spaces/" + spaceId + "/members/me", tokenA));
         assertThat(findSpace(ok(get("/v1/spaces/me", tokenB)), spaceId).get("myRole").asText()).isEqualTo("OWNER");
 
-        // 9. 새 방장 B가 코드를 재발급하면 옛 코드로는 A가 다시 들어올 수 없고, 새 코드로는 들어온다
+        // 9. 새 방장 B가 코드를 재발급하면 옛 코드로는 A가 요청할 수 없고, 새 코드로 요청해 B가 수락하면 들어온다
         String newCode = ok(post("/v1/groups/" + spaceId + "/invite-code", tokenB, null)).get("code").asText();
         assertThat(newCode).isNotEqualTo(code);
         assertThat(errorCode(post("/v1/groups/join", tokenA, "{\"code\":\"" + code + "\"}"))).isEqualTo("INVALID_REQUEST");
-        JsonNode rejoined = ok(post("/v1/groups/join", tokenA, "{\"code\":\"" + newCode + "\"}"));
-        assertThat(rejoined.get("myRole").asText()).isEqualTo("MEMBER");
+        joinAndApprove(tokenA, tokenB, newCode, spaceId);
+        assertThat(findSpace(ok(get("/v1/spaces/me", tokenA)), spaceId).get("myRole").asText()).isEqualTo("MEMBER");
 
-        // 10. 방장 B가 C를 내보낸다 → C의 홈에서 그룹이 사라진다
+        // 10. 방장 B가 C를 내보낸다 → C의 홈에서 그룹이 사라진다.
+        //     코드는 그대로지만, C가 다시 요청해도 방장이 거절하면 들어올 수 없다
         String idC = ok(get("/v1/users/me", tokenC)).get("id").asText();
         ok(delete("/v1/spaces/" + spaceId + "/members/" + idC, tokenB));
         assertThat(findSpaceOrNull(ok(get("/v1/spaces/me", tokenC)), spaceId)).isNull();
+        String requestC = ok(post("/v1/groups/join", tokenC, "{\"code\":\"" + newCode + "\"}")).get("id").asText();
+        ok(patch("/v1/groups/" + spaceId + "/join-requests/" + requestC, tokenB, "{\"action\":\"reject\"}"));
+        assertThat(findSpaceOrNull(ok(get("/v1/spaces/me", tokenC)), spaceId)).isNull();
+        assertThat(ok(get("/v1/groups/join-requests/me", tokenC)).size()).isZero();
 
         // 11. 비멤버는 그룹 정보에 접근할 수 없다
         assertThat(errorCode(get("/v1/spaces/" + spaceId + "/members", tokenC))).isEqualTo("FORBIDDEN");
@@ -129,7 +147,7 @@ class GroupSpaceE2eTest {
 
         // A가 그룹을 만들고 B가 참여
         JsonNode created = ok(post("/v1/groups", tokenA, "{\"name\":\"가족\"}"));
-        ok(post("/v1/groups/join", tokenB, "{\"code\":\"" + created.get("inviteCode").asText() + "\"}"));
+        joinAndApprove(tokenB, tokenA, created.get("inviteCode").asText(), created.get("space").get("id").asText());
 
         JsonNode spaces = ok(get("/v1/spaces/me", tokenB));
         assertThat(spaces.size()).isEqualTo(2);
@@ -148,7 +166,7 @@ class GroupSpaceE2eTest {
         JsonNode created = ok(post("/v1/groups", tokenA, "{\"name\":\"탈퇴 확인\"}"));
         String spaceId = created.get("space").get("id").asText();
         String code = created.get("inviteCode").asText();
-        ok(post("/v1/groups/join", tokenB, "{\"code\":\"" + code + "\"}"));
+        joinAndApprove(tokenB, tokenA, code, spaceId);
 
         // 방장 A 탈퇴 → B가 방장이 되어 코드를 재발급할 수 있다
         ok(delete("/v1/users/me", tokenA));
@@ -164,6 +182,18 @@ class GroupSpaceE2eTest {
     }
 
     // ---------- helpers
+
+    private void joinAndApprove(String requesterToken, String ownerToken, String code, String spaceId) {
+        String requestId = ok(post("/v1/groups/join", requesterToken, "{\"code\":\"" + code + "\"}")).get("id").asText();
+        approve(ownerToken, spaceId, requestId);
+    }
+
+    private void approve(String ownerToken, String spaceId, String requestId) {
+        JsonNode pending = ok(get("/v1/groups/" + spaceId + "/join-requests", ownerToken));
+        assertThat(StreamSupport.stream(pending.spliterator(), false).map(r -> r.get("id").asText()))
+                .contains(requestId);
+        ok(patch("/v1/groups/" + spaceId + "/join-requests/" + requestId, ownerToken, "{\"action\":\"approve\"}"));
+    }
 
     private String login(String identityToken, String nickname) {
         JsonNode res = post("/v1/auth/apple", null,
