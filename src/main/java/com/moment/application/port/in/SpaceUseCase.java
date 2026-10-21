@@ -7,6 +7,9 @@ public interface SpaceUseCase {
 
     List<SpaceView> getMySpaces(UUID meId);
 
+    /** 내가 활성 멤버인 스페이스 하나의 뷰. 멤버가 아니면 FORBIDDEN. */
+    SpaceView getMySpace(UUID meId, UUID spaceId);
+
     void leave(UUID meId, UUID spaceId);
 
     record SpaceView(

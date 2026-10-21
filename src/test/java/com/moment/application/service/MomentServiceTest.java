@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.moment.application.port.in.MomentUseCase.CreateMomentCommand;
+import com.moment.application.port.out.BlockPort;
 import com.moment.application.port.out.MomentRepositoryPort;
 import com.moment.application.port.out.MomentRepositoryPort.TimelinePage;
 import com.moment.application.port.out.PushPort;
@@ -47,6 +48,7 @@ class MomentServiceTest {
     @Mock private SpaceRepositoryPort spaceRepository;
     @Mock private UserRepositoryPort userRepository;
     @Mock private PushPort pushPort;
+    @Mock private BlockPort blockPort;
 
     private MomentService service;
     private Clock clock;
@@ -57,7 +59,7 @@ class MomentServiceTest {
     void setUp() {
         clock = Clock.fixed(Instant.parse("2024-01-01T00:00:00Z"), ZoneId.of("UTC"));
         service = new MomentService(momentRepository, reactionRepository, storagePort,
-                spaceRepository, userRepository, pushPort, clock);
+                spaceRepository, userRepository, pushPort, blockPort, clock);
         meId = UUID.randomUUID();
         spaceId = UUID.randomUUID();
     }

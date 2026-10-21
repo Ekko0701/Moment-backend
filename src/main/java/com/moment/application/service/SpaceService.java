@@ -45,35 +45,48 @@ public class SpaceService implements SpaceUseCase {
         List<SpaceMember> myMemberships = spaceRepository.findActiveMembershipsByUserId(meId);
 
         return myMemberships.stream()
-                .map(membership -> {
-                    Space space = spaceRepository.findById(membership.spaceId())
+                .map(membership -> buildView(membership.spaceId()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SpaceView getMySpace(UUID meId, UUID spaceId) {
+        boolean isMember = spaceRepository.findActiveMembershipsByUserId(meId).stream()
+                .anyMatch(m -> m.spaceId().equals(spaceId));
+        if (!isMember) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "스페이스 멤버가 아닙니다.");
+        }
+        return buildView(spaceId);
+    }
+
+    private SpaceView buildView(UUID spaceId) {
+        Space space = spaceRepository.findById(spaceId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "스페이스를 찾을 수 없어요."));
+
+        List<SpaceMember> members = spaceRepository.findActiveMembersBySpaceId(space.id());
+        List<MemberView> memberViews = members.stream()
+                .map(member -> {
+                    User user = userRepository.findById(member.userId())
                             .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
-                                    "스페이스를 찾을 수 없어요."));
-
-                    List<SpaceMember> members = spaceRepository.findActiveMembersBySpaceId(space.id());
-                    List<MemberView> memberViews = members.stream()
-                            .map(member -> {
-                                User user = userRepository.findById(member.userId())
-                                        .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
-                                                "사용자를 찾을 수 없어요."));
-                                return new MemberView(
-                                        user.id(),
-                                        user.handle(),
-                                        user.nickname(),
-                                        user.profileImageUrl(),
-                                        member.joinedAt().toEpochMilli());
-                            })
-                            .toList();
-
-                    return new SpaceView(
-                            space.id(),
-                            space.name(),
-                            space.type().name(),
-                            space.status().name(),
-                            space.createdAt().toEpochMilli(),
-                            memberViews);
+                                    "사용자를 찾을 수 없어요."));
+                    return new MemberView(
+                            user.id(),
+                            user.handle(),
+                            user.nickname(),
+                            user.profileImageUrl(),
+                            member.joinedAt().toEpochMilli());
                 })
                 .toList();
+
+        return new SpaceView(
+                space.id(),
+                space.name(),
+                space.type().name(),
+                space.status().name(),
+                space.createdAt().toEpochMilli(),
+                memberViews);
     }
 
     @Override

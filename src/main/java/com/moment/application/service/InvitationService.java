@@ -18,7 +18,6 @@ import com.moment.domain.invite.SpaceInvitation;
 import com.moment.domain.space.MemberRole;
 import com.moment.domain.space.Space;
 import com.moment.domain.space.SpaceMember;
-import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -42,10 +41,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class InvitationService implements InvitationUseCase {
 
-    private static final String INVITE_CODE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    private static final int INVITE_CODE_LENGTH = 6;
-    private static final int GENERATE_RETRY_LIMIT = 5;
-
     private final SpaceRepositoryPort spaceRepository;
     private final InviteCodePort inviteCodePort;
     private final SpaceInvitationPort invitationPort;
@@ -54,7 +49,7 @@ public class InvitationService implements InvitationUseCase {
     private final PushPort pushPort;
     private final MomentProperties properties;
     private final Clock clock;
-    private final SecureRandom secureRandom = new SecureRandom();
+    private final InviteCodeGenerator codeGenerator;
 
     public InvitationService(
             SpaceRepositoryPort spaceRepository,
@@ -64,7 +59,8 @@ public class InvitationService implements InvitationUseCase {
             UserRepositoryPort userRepository,
             PushPort pushPort,
             MomentProperties properties,
-            Clock clock) {
+            Clock clock,
+            InviteCodeGenerator codeGenerator) {
         this.spaceRepository = spaceRepository;
         this.inviteCodePort = inviteCodePort;
         this.invitationPort = invitationPort;
@@ -73,13 +69,14 @@ public class InvitationService implements InvitationUseCase {
         this.pushPort = pushPort;
         this.properties = properties;
         this.clock = clock;
+        this.codeGenerator = codeGenerator;
     }
 
     @Override
     public IssuedCode issueCode(UUID meId) {
         inviteCodePort.deleteAllByIssuerUserId(meId);
 
-        String code = generateUniqueCode();
+        String code = codeGenerator.generateUnique();
 
         Instant now = clock.instant();
         Instant expiresAt = now.plus(properties.invite().codeTtl());
@@ -324,22 +321,4 @@ public class InvitationService implements InvitationUseCase {
         return userRepository.findById(userId).map(user -> user.isActive()).orElse(false);
     }
 
-    private String generateUniqueCode() {
-        for (int attempt = 0; attempt < GENERATE_RETRY_LIMIT; attempt++) {
-            String code = generateRandomCode();
-            if (inviteCodePort.findByCode(code).isEmpty()) {
-                return code;
-            }
-        }
-        throw new BusinessException(ErrorCode.INTERNAL_ERROR,
-                "초대 코드 생성에 실패했어요. 다시 시도해주세요.");
-    }
-
-    private String generateRandomCode() {
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < INVITE_CODE_LENGTH; i++) {
-            sb.append(INVITE_CODE_CHARS.charAt(secureRandom.nextInt(INVITE_CODE_CHARS.length())));
-        }
-        return sb.toString();
-    }
 }

@@ -56,6 +56,12 @@ public interface MomentUseCase {
      */
     void delete(UUID meId, UUID momentId);
 
+    /**
+     * 스페이스 활성 멤버 각자의 최신 모먼트 1건씩. 나와 차단 관계인 멤버는 제외한다.
+     * 멤버가 아니면 FORBIDDEN.
+     */
+    List<MomentView> latestPerMember(UUID meId, UUID spaceId);
+
     record CreateMomentCommand(UUID spaceId, String imageUrl, String text) {
     }
 

@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.moment.application.port.in.InvitationUseCase.RespondCommand;
 import com.moment.application.port.out.BlockPort;
+import com.moment.application.port.out.GroupInviteCodePort;
 import com.moment.application.port.out.InviteCodePort;
 import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.SpaceInvitationPort;
@@ -53,6 +54,7 @@ class InvitationServiceTest {
     @Mock private BlockPort blockPort;
     @Mock private UserRepositoryPort userRepository;
     @Mock private PushPort pushPort;
+    @Mock private GroupInviteCodePort groupInviteCodePort;
 
     private InvitationService service;
     private UUID meId;
@@ -67,7 +69,8 @@ class InvitationServiceTest {
                 new MomentProperties.Policy(true, 6),
                 MomentProperties.Storage.stub());
         service = new InvitationService(spaceRepository, inviteCodePort, invitationPort, blockPort,
-                userRepository, pushPort, properties, Clock.fixed(NOW, ZoneOffset.UTC));
+                userRepository, pushPort, properties, Clock.fixed(NOW, ZoneOffset.UTC),
+                new InviteCodeGenerator(inviteCodePort, groupInviteCodePort));
         meId = UUID.randomUUID();
         fromUserId = UUID.randomUUID();
     }

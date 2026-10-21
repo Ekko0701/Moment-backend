@@ -1,6 +1,7 @@
 package com.moment.application.service;
 
 import com.moment.application.port.in.MomentUseCase;
+import com.moment.application.port.out.BlockPort;
 import com.moment.application.port.out.MomentRepositoryPort;
 import com.moment.application.port.out.MomentRepositoryPort.TimelinePage;
 import com.moment.application.port.out.PushPort;
@@ -39,6 +40,7 @@ public class MomentService implements MomentUseCase {
     private final SpaceRepositoryPort spaceRepository;
     private final UserRepositoryPort userRepository;
     private final PushPort pushPort;
+    private final BlockPort blockPort;
     private final Clock clock;
 
     public MomentService(
@@ -48,6 +50,7 @@ public class MomentService implements MomentUseCase {
             SpaceRepositoryPort spaceRepository,
             UserRepositoryPort userRepository,
             PushPort pushPort,
+            BlockPort blockPort,
             Clock clock) {
         this.momentRepository = momentRepository;
         this.reactionRepository = reactionRepository;
@@ -55,6 +58,7 @@ public class MomentService implements MomentUseCase {
         this.spaceRepository = spaceRepository;
         this.userRepository = userRepository;
         this.pushPort = pushPort;
+        this.blockPort = blockPort;
         this.clock = clock;
     }
 
@@ -211,6 +215,23 @@ public class MomentService implements MomentUseCase {
         UUID excludeAuthorId = excludeMine ? meId : null;
         return momentRepository.findLatestBySpace(spaceId, excludeAuthorId)
                 .map(moment -> buildMomentView(moment, meId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MomentView> latestPerMember(UUID meId, UUID spaceId) {
+        List<SpaceMember> members = spaceRepository.findActiveMembersBySpaceId(spaceId);
+        boolean isMember = members.stream().anyMatch(m -> m.userId().equals(meId));
+        if (!isMember) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "해당 스페이스의 멤버가 아니에요.");
+        }
+
+        Set<UUID> blocked = blockPort.findBlockedUserIdsEitherDirection(meId);
+        List<UUID> authorIds = members.stream()
+                .map(SpaceMember::userId)
+                .filter(id -> !blocked.contains(id))
+                .toList();
+        return buildMomentViews(momentRepository.findLatestPerAuthor(spaceId, authorIds), meId);
     }
 
     @Override
