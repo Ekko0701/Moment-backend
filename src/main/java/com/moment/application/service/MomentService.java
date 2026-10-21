@@ -14,10 +14,12 @@ import com.moment.common.exception.BusinessException;
 import com.moment.common.exception.ErrorCode;
 import com.moment.domain.moment.Moment;
 import com.moment.domain.moment.Reaction;
+import com.moment.domain.space.Space;
 import com.moment.domain.space.SpaceMember;
 import com.moment.domain.user.User;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -90,20 +92,27 @@ public class MomentService implements MomentUseCase {
                 command.imageUrl(), command.text(), now);
         Moment saved = momentRepository.save(moment);
 
-        // 팬아웃: 작성자 제외 활성 멤버 전원에게 알림
+        // 팬아웃: 작성자와 차단 관계를 제외한 활성 멤버에게 알림.
+        // 배너(MOMENT_CREATED)는 알림을 켠 멤버에게만, 위젯 갱신(WIDGET_REFRESH)은 전원에게 보낸다.
         List<SpaceMember> activeMembers = spaceRepository.findActiveMembersBySpaceId(command.spaceId());
         User author = userRepository.findById(meId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없어요."));
+        Set<UUID> blocked = blockPort.findBlockedUserIdsEitherDirection(meId);
+        Optional<Space> group = spaceRepository.findById(command.spaceId()).filter(Space::isGroup);
+        String title = group.map(Space::name).orElse(author.nickname() + "님이 모먼트를 공유했어요.");
+        String body = group.isPresent() ? author.nickname() + "님이 모먼트를 공유했어요." : "모먼트를 확인해 보세요.";
 
         for (SpaceMember member : activeMembers) {
-            if (!member.userId().equals(meId)) {
+            if (!member.userId().equals(meId) && !blocked.contains(member.userId())) {
                 // 타입 1: MOMENT_CREATED — UI 업데이트
-                pushPort.send(new PushMessage(
-                        member.userId(),
-                        "MOMENT_CREATED",
-                        author.nickname() + "님이 모먼트를 공유했어요.",
-                        "모먼트를 확인해 보세요.",
-                        Map.of("spaceId", command.spaceId().toString(), "momentId", saved.id().toString())));
+                if (member.notificationsEnabled()) {
+                    pushPort.send(new PushMessage(
+                            member.userId(),
+                            "MOMENT_CREATED",
+                            title,
+                            body,
+                            Map.of("spaceId", command.spaceId().toString(), "momentId", saved.id().toString())));
+                }
 
                 // 타입 2: WIDGET_REFRESH — 사일런트 갱신 (data 포함)
                 pushPort.send(new PushMessage(
@@ -130,8 +139,9 @@ public class MomentService implements MomentUseCase {
 
         Cursor decoded = decodeCursor(cursor);
         int actualLimit = Math.min(limit <= 0 ? TIMELINE_DEFAULT_LIMIT : limit, TIMELINE_MAX_LIMIT);
+        Set<UUID> blocked = blockPort.findBlockedUserIdsEitherDirection(meId);
         MomentRepositoryPort.TimelinePage page =
-                momentRepository.findTimeline(spaceId, decoded.createdAt(), decoded.id(), actualLimit + 1);
+                momentRepository.findTimeline(spaceId, decoded.createdAt(), decoded.id(), actualLimit + 1, blocked);
 
         // nextCursor 및 hasNext 결정
         List<Moment> momentItems;
@@ -212,9 +222,23 @@ public class MomentService implements MomentUseCase {
             throw new BusinessException(ErrorCode.FORBIDDEN, "해당 스페이스의 멤버가 아니에요.");
         }
 
-        UUID excludeAuthorId = excludeMine ? meId : null;
-        return momentRepository.findLatestBySpace(spaceId, excludeAuthorId)
+        Set<UUID> excluded = new HashSet<>(blockPort.findBlockedUserIdsEitherDirection(meId));
+        if (excludeMine) {
+            excluded.add(meId);
+        }
+        return momentRepository.findLatestBySpaceExcluding(spaceId, excluded)
                 .map(moment -> buildMomentView(moment, meId));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MomentView> latestForMySpaces(UUID meId) {
+        List<UUID> spaceIds = spaceRepository.findActiveMembershipsByUserId(meId).stream()
+                .map(SpaceMember::spaceId)
+                .toList();
+        Set<UUID> excluded = new HashSet<>(blockPort.findBlockedUserIdsEitherDirection(meId));
+        excluded.add(meId);
+        return buildMomentViews(momentRepository.findLatestPerSpace(spaceIds, excluded), meId);
     }
 
     @Override

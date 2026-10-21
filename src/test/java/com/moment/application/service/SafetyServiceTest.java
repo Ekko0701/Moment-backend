@@ -1,5 +1,6 @@
 package com.moment.application.service;
 
+import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -63,5 +64,24 @@ class SafetyServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.INVALID_REQUEST);
+    }
+
+    @Test
+    @DisplayName("차단: 함께 속한 그룹 스페이스는 종료하지 않는다(서로의 모먼트만 숨김)")
+    void block_sharedGroup_keepsGroup() {
+        Space group = Space.group(UUID.randomUUID(), "주말 산책", 6, clock.instant());
+        SpaceMember mine = new SpaceMember(UUID.randomUUID(), group.id(), meId, MemberRole.MEMBER, clock.instant(), null);
+        SpaceMember theirs = new SpaceMember(UUID.randomUUID(), group.id(), targetId, MemberRole.MEMBER, clock.instant(), null);
+        when(blockRepository.existsBlockBetween(meId, targetId)).thenReturn(false);
+        when(spaceRepository.findActiveMembershipsByUserId(meId)).thenReturn(List.of(mine));
+        when(spaceRepository.findActiveMembershipsByUserId(targetId)).thenReturn(List.of(theirs));
+        when(spaceRepository.findById(group.id())).thenReturn(Optional.of(group));
+
+        service.block(meId, targetId);
+
+        verify(blockRepository).save(any(Block.class));
+        verify(spaceRepository, never()).save(any());
+        verify(spaceRepository, never()).saveMember(any());
+        verify(pushPort, never()).send(any());
     }
 }

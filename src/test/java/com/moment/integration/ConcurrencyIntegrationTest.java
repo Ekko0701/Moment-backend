@@ -250,6 +250,42 @@ class ConcurrencyIntegrationTest {
      * ready barrier로 모든 worker가 출발선에 도달한 것을 확인한 뒤 start를 연다.
      * Future.get()으로 worker 예외를 테스트 스레드로 전파하고, 결과 개수(n)를 보장한다.
      */
+    // ---- 그룹 정원 동시 입장 ----
+
+    @Test
+    @DisplayName("정원 6 그룹에 7명이 동시에 같은 코드로 입장: 5명만 성공(방장 포함 6), 나머지는 CONFLICT")
+    void concurrentGroupJoin_neverExceedsCapacity() throws Exception {
+        for (int round = 0; round < REPEAT; round++) {
+            RestClient client = client();
+            String runId = UUID.randomUUID().toString();
+            String ownerToken = login(client, "owner-" + runId, "방장").get("data").get("accessToken").asText();
+            JsonNode created = post(client, "/v1/groups", ownerToken, "{\"name\":\"동시입장\"}").get("data");
+            String spaceId = created.get("space").get("id").asText();
+            String code = created.get("inviteCode").asText();
+
+            List<String> tokens = new ArrayList<>();
+            for (int i = 0; i < 7; i++) {
+                tokens.add(login(client, "joiner-" + i + "-" + runId, "참여" + i).get("data").get("accessToken").asText());
+            }
+            AtomicInteger next = new AtomicInteger();
+            List<JsonNode> results = runConcurrently(tokens.size(), () ->
+                    post(client, "/v1/groups/join", tokens.get(next.getAndIncrement()),
+                            "{\"code\":\"" + code + "\"}"));
+
+            assertThat(results.stream().filter(r -> r.get("success").asBoolean()))
+                    .as("round %d: 성공한 입장 수", round).hasSize(5);
+            assertThat(results.stream().filter(r -> !r.get("success").asBoolean())
+                    .map(r -> r.get("error").get("code").asText()))
+                    .as("round %d: 실패는 모두 CONFLICT", round)
+                    .containsOnly("CONFLICT");
+
+            Integer active = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM space_members WHERE space_id = ?::uuid AND left_at IS NULL",
+                    Integer.class, spaceId);
+            assertThat(active).as("round %d: 활성 멤버는 정원 6", round).isEqualTo(6);
+        }
+    }
+
     private List<JsonNode> runConcurrently(int n, Callable<JsonNode> call) throws Exception {
         ExecutorService pool = Executors.newFixedThreadPool(n);
         try {

@@ -62,6 +62,9 @@ public interface MomentUseCase {
      */
     List<MomentView> latestPerMember(UUID meId, UUID spaceId);
 
+    /** 내가 속한 스페이스마다 나와 차단 관계를 제외한 최신 모먼트 1건. 모먼트가 없는 스페이스는 빠진다. */
+    List<MomentView> latestForMySpaces(UUID meId);
+
     record CreateMomentCommand(UUID spaceId, String imageUrl, String text) {
     }
 

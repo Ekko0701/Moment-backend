@@ -1,5 +1,10 @@
 package com.moment.application.service;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyInt;
+import org.mockito.ArgumentCaptor;
+import com.moment.domain.space.Space;
+import java.util.Set;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
@@ -117,5 +122,79 @@ class MomentServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting("errorCode")
                 .isEqualTo(ErrorCode.FORBIDDEN);
+    }
+
+    @Test
+    @DisplayName("모먼트 생성: 알림 끈 멤버는 위젯 갱신만, 차단 관계 멤버는 아무것도 받지 않는다")
+    void create_respectsMuteAndBlock() {
+        UUID mutedId = UUID.randomUUID();
+        UUID blockedId = UUID.randomUUID();
+        SpaceMember myMem = new SpaceMember(UUID.randomUUID(), spaceId, meId, MemberRole.OWNER, Instant.now(), null);
+        SpaceMember muted = new SpaceMember(UUID.randomUUID(), spaceId, mutedId, MemberRole.MEMBER, Instant.now(), null)
+                .withNotifications(false);
+        SpaceMember blocked = new SpaceMember(UUID.randomUUID(), spaceId, blockedId, MemberRole.MEMBER, Instant.now(), null);
+        when(spaceRepository.findActiveMembershipsByUserId(meId)).thenReturn(List.of(myMem));
+        when(spaceRepository.findActiveMembersBySpaceId(spaceId)).thenReturn(List.of(myMem, muted, blocked));
+        when(spaceRepository.findById(spaceId)).thenReturn(Optional.of(
+                Space.group(spaceId, "주말 산책", 6, clock.instant())));
+        when(blockPort.findBlockedUserIdsEitherDirection(meId)).thenReturn(Set.of(blockedId));
+        Moment saved = Moment.create(UUID.randomUUID(), spaceId, meId, null, "text", clock.instant());
+        when(momentRepository.save(any(Moment.class))).thenReturn(saved);
+        User author = new User(meId, "handle1", "작성자", null, AuthProvider.APPLE, null,
+                null, null, true, null, UserStatus.ACTIVE, Instant.now(), Instant.now());
+        when(userRepository.findById(meId)).thenReturn(Optional.of(author));
+        when(reactionRepository.findAllByMomentIdIn(any())).thenReturn(List.of());
+
+        service.create(meId, new CreateMomentCommand(spaceId, null, "text"));
+
+        ArgumentCaptor<PushMessage> push = ArgumentCaptor.forClass(PushMessage.class);
+        verify(pushPort, times(1)).send(push.capture());
+        assertThat(push.getValue().targetUserId()).isEqualTo(mutedId);
+        assertThat(push.getValue().type()).isEqualTo("WIDGET_REFRESH");
+    }
+
+    @Test
+    @DisplayName("타임라인: 차단 관계 작성자를 저장소 조회에서 제외한다")
+    void timeline_excludesBlockedAuthors() {
+        UUID blockedId = UUID.randomUUID();
+        SpaceMember myMem = new SpaceMember(UUID.randomUUID(), spaceId, meId, MemberRole.MEMBER, Instant.now(), null);
+        when(spaceRepository.findActiveMembershipsByUserId(meId)).thenReturn(List.of(myMem));
+        when(blockPort.findBlockedUserIdsEitherDirection(meId)).thenReturn(Set.of(blockedId));
+        when(momentRepository.findTimeline(eq(spaceId), any(), any(), anyInt(), eq(Set.of(blockedId))))
+                .thenReturn(new MomentRepositoryPort.TimelinePage(List.of(), null, false));
+
+        service.timeline(meId, spaceId, null, 20);
+
+        verify(momentRepository).findTimeline(eq(spaceId), any(), any(), anyInt(), eq(Set.of(blockedId)));
+    }
+
+    @Test
+    @DisplayName("최신 1건(excludeMine): 나와 차단 관계 작성자를 함께 제외한다")
+    void latest_excludesMeAndBlocked() {
+        UUID blockedId = UUID.randomUUID();
+        SpaceMember myMem = new SpaceMember(UUID.randomUUID(), spaceId, meId, MemberRole.MEMBER, Instant.now(), null);
+        when(spaceRepository.findActiveMembershipsByUserId(meId)).thenReturn(List.of(myMem));
+        when(blockPort.findBlockedUserIdsEitherDirection(meId)).thenReturn(Set.of(blockedId));
+        when(momentRepository.findLatestBySpaceExcluding(spaceId, Set.of(meId, blockedId)))
+                .thenReturn(Optional.empty());
+
+        assertThat(service.latest(meId, spaceId, true)).isEmpty();
+        verify(momentRepository).findLatestBySpaceExcluding(spaceId, Set.of(meId, blockedId));
+    }
+
+    @Test
+    @DisplayName("멤버별 최신: 차단 관계 멤버는 조회 대상에서 빠진다")
+    void latestPerMember_skipsBlocked() {
+        UUID friendId = UUID.randomUUID();
+        UUID blockedId = UUID.randomUUID();
+        SpaceMember myMem = new SpaceMember(UUID.randomUUID(), spaceId, meId, MemberRole.MEMBER, Instant.now(), null);
+        SpaceMember friend = new SpaceMember(UUID.randomUUID(), spaceId, friendId, MemberRole.MEMBER, Instant.now(), null);
+        SpaceMember blocked = new SpaceMember(UUID.randomUUID(), spaceId, blockedId, MemberRole.MEMBER, Instant.now(), null);
+        when(spaceRepository.findActiveMembersBySpaceId(spaceId)).thenReturn(List.of(myMem, friend, blocked));
+        when(blockPort.findBlockedUserIdsEitherDirection(meId)).thenReturn(Set.of(blockedId));
+        when(momentRepository.findLatestPerAuthor(spaceId, List.of(meId, friendId))).thenReturn(List.of());
+
+        assertThat(service.latestPerMember(meId, spaceId)).isEmpty();
+        verify(momentRepository).findLatestPerAuthor(spaceId, List.of(meId, friendId));
     }
 }

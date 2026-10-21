@@ -42,9 +42,16 @@ public class SpaceController {
         this.momentUseCase = momentUseCase;
     }
 
+    /** 내 스페이스 목록과 스페이스별 최신 모먼트(나 제외). 홈 화면 한 장을 이 응답 하나로 그린다. */
     @GetMapping("/me")
     ApiResponse<List<SpaceResponse>> getMySpaces(@AuthenticationPrincipal UUID userId) {
-        return ApiResponse.ok(spaceUseCase.getMySpaces(userId).stream().map(SpaceResponse::from).toList());
+        Map<UUID, MomentView> latestBySpace = momentUseCase.latestForMySpaces(userId).stream()
+                .collect(Collectors.toMap(MomentView::spaceId, Function.identity()));
+        var responses = spaceUseCase.getMySpaces(userId).stream()
+                .map(view -> SpaceResponse.from(view,
+                        latestBySpace.containsKey(view.id()) ? MomentResponse.from(latestBySpace.get(view.id())) : null))
+                .toList();
+        return ApiResponse.ok(responses);
     }
 
     @DeleteMapping("/{spaceId}/members/me")
