@@ -29,9 +29,15 @@ moment:
   invite:
     code-ttl: 24h
     invitation-ttl: 72h
+    # 그룹 초대 코드는 재사용형이라 1:1 코드보다 길게 유지한다. 방장이 재발급하면 즉시 교체된다.
+    group-code-ttl: 7d
   policy:
     # MVP 정책: 사용자당 활성 ONE_TO_ONE 스페이스 1개 (다중 스페이스 개방 시 false)
     single-space-enabled: true
+    # 새 그룹 스페이스의 정원 (방장 포함)
+    group-max-members: 6
+    # 한 사용자가 속할 수 있는 그룹 수 (만든 그룹과 참여한 그룹 합계)
+    group-max-per-user: 10
   storage:
     # 기본값 s3(운영 안전). dev 프로필이 stub으로 덮어쓴다.
     # s3 모드는 버킷/리전/공개 URL 미주입 시 기동 실패(fail-closed).

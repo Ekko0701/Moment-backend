@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.moment.application.port.in.InvitationUseCase.RespondCommand;
 import com.moment.application.port.out.BlockPort;
+import com.moment.application.port.out.GroupInviteCodePort;
 import com.moment.application.port.out.InviteCodePort;
 import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.SpaceInvitationPort;
@@ -53,6 +54,7 @@ class InvitationServiceTest {
     @Mock private BlockPort blockPort;
     @Mock private UserRepositoryPort userRepository;
     @Mock private PushPort pushPort;
+    @Mock private GroupInviteCodePort groupInviteCodePort;
 
     private InvitationService service;
     private UUID meId;
@@ -63,11 +65,12 @@ class InvitationServiceTest {
         MomentProperties properties = new MomentProperties(
                 new MomentProperties.Jwt("secret", Duration.ofMinutes(30), Duration.ofDays(30)),
                 new MomentProperties.Auth(MomentProperties.Auth.Apple.stub()),
-                new MomentProperties.Invite(Duration.ofHours(24), Duration.ofHours(72)),
-                new MomentProperties.Policy(true),
+                new MomentProperties.Invite(Duration.ofHours(24), Duration.ofHours(72), Duration.ofDays(7)),
+                new MomentProperties.Policy(true, 6, 10),
                 MomentProperties.Storage.stub());
         service = new InvitationService(spaceRepository, inviteCodePort, invitationPort, blockPort,
-                userRepository, pushPort, properties, Clock.fixed(NOW, ZoneOffset.UTC));
+                userRepository, pushPort, properties, Clock.fixed(NOW, ZoneOffset.UTC),
+                new InviteCodeGenerator(inviteCodePort, groupInviteCodePort));
         meId = UUID.randomUUID();
         fromUserId = UUID.randomUUID();
     }

@@ -1,6 +1,7 @@
 package com.moment.application.service;
 
 import com.moment.application.port.in.MomentUseCase;
+import com.moment.application.port.out.BlockPort;
 import com.moment.application.port.out.MomentRepositoryPort;
 import com.moment.application.port.out.MomentRepositoryPort.TimelinePage;
 import com.moment.application.port.out.PushPort;
@@ -13,10 +14,12 @@ import com.moment.common.exception.BusinessException;
 import com.moment.common.exception.ErrorCode;
 import com.moment.domain.moment.Moment;
 import com.moment.domain.moment.Reaction;
+import com.moment.domain.space.Space;
 import com.moment.domain.space.SpaceMember;
 import com.moment.domain.user.User;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -39,6 +42,7 @@ public class MomentService implements MomentUseCase {
     private final SpaceRepositoryPort spaceRepository;
     private final UserRepositoryPort userRepository;
     private final PushPort pushPort;
+    private final BlockPort blockPort;
     private final Clock clock;
 
     public MomentService(
@@ -48,6 +52,7 @@ public class MomentService implements MomentUseCase {
             SpaceRepositoryPort spaceRepository,
             UserRepositoryPort userRepository,
             PushPort pushPort,
+            BlockPort blockPort,
             Clock clock) {
         this.momentRepository = momentRepository;
         this.reactionRepository = reactionRepository;
@@ -55,6 +60,7 @@ public class MomentService implements MomentUseCase {
         this.spaceRepository = spaceRepository;
         this.userRepository = userRepository;
         this.pushPort = pushPort;
+        this.blockPort = blockPort;
         this.clock = clock;
     }
 
@@ -86,20 +92,27 @@ public class MomentService implements MomentUseCase {
                 command.imageUrl(), command.text(), now);
         Moment saved = momentRepository.save(moment);
 
-        // 팬아웃: 작성자 제외 활성 멤버 전원에게 알림
+        // 팬아웃: 작성자와 차단 관계를 제외한 활성 멤버에게 알림.
+        // 배너(MOMENT_CREATED)는 알림을 켠 멤버에게만, 위젯 갱신(WIDGET_REFRESH)은 전원에게 보낸다.
         List<SpaceMember> activeMembers = spaceRepository.findActiveMembersBySpaceId(command.spaceId());
         User author = userRepository.findById(meId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없어요."));
+        Set<UUID> blocked = blockPort.findBlockedUserIdsEitherDirection(meId);
+        Optional<Space> group = spaceRepository.findById(command.spaceId()).filter(Space::isGroup);
+        String title = group.map(Space::name).orElse(author.nickname() + "님이 모먼트를 공유했어요.");
+        String body = group.isPresent() ? author.nickname() + "님이 모먼트를 공유했어요." : "모먼트를 확인해 보세요.";
 
         for (SpaceMember member : activeMembers) {
-            if (!member.userId().equals(meId)) {
+            if (!member.userId().equals(meId) && !blocked.contains(member.userId())) {
                 // 타입 1: MOMENT_CREATED — UI 업데이트
-                pushPort.send(new PushMessage(
-                        member.userId(),
-                        "MOMENT_CREATED",
-                        author.nickname() + "님이 모먼트를 공유했어요.",
-                        "모먼트를 확인해 보세요.",
-                        Map.of("spaceId", command.spaceId().toString(), "momentId", saved.id().toString())));
+                if (member.notificationsEnabled()) {
+                    pushPort.send(new PushMessage(
+                            member.userId(),
+                            "MOMENT_CREATED",
+                            title,
+                            body,
+                            Map.of("spaceId", command.spaceId().toString(), "momentId", saved.id().toString())));
+                }
 
                 // 타입 2: WIDGET_REFRESH — 사일런트 갱신 (data 포함)
                 pushPort.send(new PushMessage(
@@ -110,7 +123,7 @@ public class MomentService implements MomentUseCase {
             }
         }
 
-        return buildMomentView(saved, meId);
+        return buildMomentView(saved, meId, blocked);
     }
 
     @Override
@@ -126,8 +139,9 @@ public class MomentService implements MomentUseCase {
 
         Cursor decoded = decodeCursor(cursor);
         int actualLimit = Math.min(limit <= 0 ? TIMELINE_DEFAULT_LIMIT : limit, TIMELINE_MAX_LIMIT);
+        Set<UUID> blocked = blockPort.findBlockedUserIdsEitherDirection(meId);
         MomentRepositoryPort.TimelinePage page =
-                momentRepository.findTimeline(spaceId, decoded.createdAt(), decoded.id(), actualLimit + 1);
+                momentRepository.findTimeline(spaceId, decoded.createdAt(), decoded.id(), actualLimit + 1, blocked);
 
         // nextCursor 및 hasNext 결정
         List<Moment> momentItems;
@@ -142,7 +156,7 @@ public class MomentService implements MomentUseCase {
             momentItems = page.items();
         }
 
-        return new TimelinePage(buildMomentViews(momentItems, meId), nextCursor, hasNext);
+        return new TimelinePage(buildMomentViews(momentItems, meId, blocked), nextCursor, hasNext);
     }
 
     // (createdAt, id) 복합 커서 인코딩/디코딩 — 불투명 문자열 "{ISO-8601}|{uuid}".
@@ -171,7 +185,8 @@ public class MomentService implements MomentUseCase {
     }
 
     // 타임라인 배치 뷰 — 작성자와 리액션을 한 번에 조회해 N+1을 제거한다.
-    private List<MomentView> buildMomentViews(List<Moment> moments, UUID meId) {
+    // hiddenReactors(나와 차단 관계인 사용자)의 리액션은 집계에서 뺀다.
+    private List<MomentView> buildMomentViews(List<Moment> moments, UUID meId, Set<UUID> hiddenReactors) {
         if (moments.isEmpty()) {
             return List.of();
         }
@@ -192,7 +207,7 @@ public class MomentService implements MomentUseCase {
                         throw new BusinessException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없어요.");
                     }
                     List<Reaction> reactions = reactionsByMoment.getOrDefault(moment.id(), List.of());
-                    return toView(moment, author, reactions, meId);
+                    return toView(moment, author, reactions, meId, hiddenReactors);
                 })
                 .toList();
     }
@@ -208,9 +223,42 @@ public class MomentService implements MomentUseCase {
             throw new BusinessException(ErrorCode.FORBIDDEN, "해당 스페이스의 멤버가 아니에요.");
         }
 
-        UUID excludeAuthorId = excludeMine ? meId : null;
-        return momentRepository.findLatestBySpace(spaceId, excludeAuthorId)
-                .map(moment -> buildMomentView(moment, meId));
+        Set<UUID> blocked = blockPort.findBlockedUserIdsEitherDirection(meId);
+        Set<UUID> excluded = new HashSet<>(blocked);
+        if (excludeMine) {
+            excluded.add(meId);
+        }
+        return momentRepository.findLatestBySpaceExcluding(spaceId, excluded)
+                .map(moment -> buildMomentView(moment, meId, blocked));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MomentView> latestForMySpaces(UUID meId) {
+        List<UUID> spaceIds = spaceRepository.findActiveMembershipsByUserId(meId).stream()
+                .map(SpaceMember::spaceId)
+                .toList();
+        Set<UUID> blocked = blockPort.findBlockedUserIdsEitherDirection(meId);
+        Set<UUID> excluded = new HashSet<>(blocked);
+        excluded.add(meId);
+        return buildMomentViews(momentRepository.findLatestPerSpace(spaceIds, excluded), meId, blocked);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MomentView> latestPerMember(UUID meId, UUID spaceId) {
+        List<SpaceMember> members = spaceRepository.findActiveMembersBySpaceId(spaceId);
+        boolean isMember = members.stream().anyMatch(m -> m.userId().equals(meId));
+        if (!isMember) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "해당 스페이스의 멤버가 아니에요.");
+        }
+
+        Set<UUID> blocked = blockPort.findBlockedUserIdsEitherDirection(meId);
+        List<UUID> authorIds = members.stream()
+                .map(SpaceMember::userId)
+                .filter(id -> !blocked.contains(id))
+                .toList();
+        return buildMomentViews(momentRepository.findLatestPerAuthor(spaceId, authorIds), meId, blocked);
     }
 
     @Override
@@ -228,18 +276,22 @@ public class MomentService implements MomentUseCase {
         momentRepository.save(deleted);
     }
 
-    private MomentView buildMomentView(Moment moment, UUID meId) {
+    private MomentView buildMomentView(Moment moment, UUID meId, Set<UUID> hiddenReactors) {
         User author = userRepository.findById(moment.authorId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "사용자를 찾을 수 없어요."));
         List<Reaction> reactions = reactionRepository.findAllByMomentIdIn(List.of(moment.id()));
-        return toView(moment, author, reactions, meId);
+        return toView(moment, author, reactions, meId, hiddenReactors);
     }
 
-    // 이미 로딩된 작성자·리액션으로 뷰를 조립한다(배치·단건 공용).
-    private MomentView toView(Moment moment, User author, List<Reaction> reactions, UUID meId) {
+    // 이미 로딩된 작성자·리액션으로 뷰를 조립한다(배치·단건 공용). hiddenReactors의 리액션은 집계하지 않는다.
+    private MomentView toView(Moment moment, User author, List<Reaction> allReactions, UUID meId,
+            Set<UUID> hiddenReactors) {
         MomentView.AuthorView authorView = new MomentView.AuthorView(
                 author.id(), author.handle(), author.nickname(), author.profileImageUrl());
 
+        List<Reaction> reactions = allReactions.stream()
+                .filter(r -> !hiddenReactors.contains(r.userId()))
+                .toList();
         Map<String, Long> emojiCounts = reactions.stream()
                 .collect(Collectors.groupingBy(Reaction::emoji, Collectors.counting()));
         List<MomentView.ReactionCount> reactionCounts = emojiCounts.entrySet().stream()

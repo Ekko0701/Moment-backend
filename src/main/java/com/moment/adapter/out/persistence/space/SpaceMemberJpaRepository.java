@@ -1,5 +1,6 @@
 package com.moment.adapter.out.persistence.space;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -12,4 +13,6 @@ interface SpaceMemberJpaRepository extends JpaRepository<SpaceMemberEntity, UUID
     List<SpaceMemberEntity> findBySpaceId(UUID spaceId);
 
     List<SpaceMemberEntity> findByUserIdAndLeftAtIsNull(UUID userId);
+
+    List<SpaceMemberEntity> findBySpaceIdInAndLeftAtIsNull(Collection<UUID> spaceIds);
 }

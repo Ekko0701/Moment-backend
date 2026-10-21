@@ -81,21 +81,7 @@ public class MomentController {
     }
 
     private MomentResponse buildResponse(MomentView view) {
-        return new MomentResponse(
-                view.id(),
-                view.spaceId(),
-                new MomentResponse.AuthorResponse(
-                        view.author().userId(),
-                        view.author().handle(),
-                        view.author().nickname(),
-                        view.author().profileImageUrl()),
-                view.imageUrl(),
-                view.text(),
-                view.createdAtMs(),
-                view.reactions().stream()
-                        .map(r -> new MomentResponse.ReactionCountResponse(r.emoji(), r.count()))
-                        .toList(),
-                view.myReaction());
+        return MomentResponse.from(view);
     }
 
     record PresignResponse(String uploadUrl, String imageUrl) {

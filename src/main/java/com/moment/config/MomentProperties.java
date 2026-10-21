@@ -25,10 +25,17 @@ public record MomentProperties(Jwt jwt, Auth auth, Invite invite, Policy policy,
         }
     }
 
-    public record Invite(Duration codeTtl, Duration invitationTtl) {
+    /**
+     * @param groupCodeTtl 그룹 초대 코드 유효기간
+     */
+    public record Invite(Duration codeTtl, Duration invitationTtl, Duration groupCodeTtl) {
     }
 
-    public record Policy(boolean singleSpaceEnabled) {
+    /**
+     * @param singleSpaceEnabled 사용자당 활성 1:1 스페이스를 1개로 제한 (그룹에는 적용하지 않음)
+     * @param groupMaxMembers   새 그룹 스페이스의 정원
+     */
+    public record Policy(boolean singleSpaceEnabled, int groupMaxMembers, int groupMaxPerUser) {
     }
 
     public record Storage(String mode, S3 s3) {

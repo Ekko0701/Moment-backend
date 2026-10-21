@@ -11,13 +11,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * 운영 모드(s3)로 Spring 컨텍스트가 실제로 뜨는지 검증한다.
+ * 운영 모드(s3)로 Spring 컨텍스트가 뜨는지 검증한다.
  *
- * <p>dev·it 프로필은 stub 모드라 S3StorageAdapter 빈이 한 번도 생성되지 않는다. 2026-10-16 배포에서
- * 생성자 모호성(@Autowired 누락)으로 운영 기동이 실패했는데 CI가 통과한 것이 그 공백 때문이다.
- * 이 테스트는 s3 모드에서 빈 생성과 설정 바인딩을 컨텍스트 수준에서 고정한다.
- * 서명기(S3Presigner)는 자격 증명을 지연 해석하므로 AWS 자격 증명·네트워크 없이도 빈 생성은 성공해야 한다.
- * 실제 서명 호출은 자격 증명이 필요해 여기서 하지 않는다(S3StorageAdapterTest가 고정 키로 검증).
+ * <p>dev·it 프로필은 stub 모드라 S3StorageAdapter 빈을 생성하지 않으므로, 이 테스트가 s3 모드의
+ * 빈 생성과 설정 바인딩을 컨텍스트 수준에서 보장한다. 서명기(S3Presigner)는 자격 증명을 지연 해석하므로
+ * AWS 자격 증명·네트워크 없이 빈 생성까지 검증한다. 실제 서명은 S3StorageAdapterTest가 고정 키로 검증한다.
  */
 @SpringBootTest(properties = {
         "moment.storage.mode=s3",

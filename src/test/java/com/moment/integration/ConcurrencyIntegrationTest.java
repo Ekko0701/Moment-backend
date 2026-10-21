@@ -243,6 +243,44 @@ class ConcurrencyIntegrationTest {
         }
     }
 
+    // ---- 그룹 정원 동시 수락 ----
+
+    @Test
+    @DisplayName("정원 6 그룹에 들어온 7건의 참여 요청을 방장이 동시에 수락: 5건만 성공(방장 포함 6), 나머지는 CONFLICT")
+    void concurrentGroupApprove_neverExceedsCapacity() throws Exception {
+        for (int round = 0; round < REPEAT; round++) {
+            RestClient client = client();
+            String runId = UUID.randomUUID().toString();
+            String ownerToken = login(client, "owner-" + runId, "방장").get("data").get("accessToken").asText();
+            JsonNode created = post(client, "/v1/groups", ownerToken, "{\"name\":\"동시수락\"}").get("data");
+            String spaceId = created.get("space").get("id").asText();
+            String code = created.get("inviteCode").asText();
+
+            List<String> requestIds = new ArrayList<>();
+            for (int i = 0; i < 7; i++) {
+                String token = login(client, "joiner-" + i + "-" + runId, "참여" + i).get("data").get("accessToken").asText();
+                requestIds.add(post(client, "/v1/groups/join", token, "{\"code\":\"" + code + "\"}")
+                        .get("data").get("id").asText());
+            }
+            AtomicInteger next = new AtomicInteger();
+            List<JsonNode> results = runConcurrently(requestIds.size(), () ->
+                    patch(client, "/v1/groups/" + spaceId + "/join-requests/" + requestIds.get(next.getAndIncrement()),
+                            ownerToken, "{\"action\":\"approve\"}"));
+
+            assertThat(results.stream().filter(r -> r.get("success").asBoolean()))
+                    .as("round %d: 성공한 수락 수", round).hasSize(5);
+            assertThat(results.stream().filter(r -> !r.get("success").asBoolean())
+                    .map(r -> r.get("error").get("code").asText()))
+                    .as("round %d: 실패는 모두 CONFLICT", round)
+                    .containsOnly("CONFLICT");
+
+            Integer active = jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM space_members WHERE space_id = ?::uuid AND left_at IS NULL",
+                    Integer.class, spaceId);
+            assertThat(active).as("round %d: 활성 멤버는 정원 6", round).isEqualTo(6);
+        }
+    }
+
     // ---- Helpers ----
 
     /**

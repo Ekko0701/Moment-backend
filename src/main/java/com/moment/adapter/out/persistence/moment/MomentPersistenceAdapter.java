@@ -4,6 +4,8 @@ import com.moment.application.port.out.MomentRepositoryPort;
 import com.moment.application.port.out.MomentRepositoryPort.TimelinePage;
 import com.moment.domain.moment.Moment;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -52,5 +54,57 @@ class MomentPersistenceAdapter implements MomentRepositoryPort {
                 ? jpaRepository.findLatestBySpace(spaceId)
                 : jpaRepository.findLatestBySpaceExcludingAuthor(spaceId, excludeAuthorId);
         return entity.map(MomentEntity::toDomain);
+    }
+
+    @Override
+    public TimelinePage findTimeline(UUID spaceId, Instant cursorCreatedAt, UUID cursorId, int limit,
+            Collection<UUID> excludedAuthorIds) {
+        if (excludedAuthorIds.isEmpty()) {
+            return findTimeline(spaceId, cursorCreatedAt, cursorId, limit);
+        }
+        List<MomentEntity> entities = (cursorCreatedAt == null)
+                ? jpaRepository.findTimelineFirstPageExcluding(spaceId, excludedAuthorIds, limit)
+                : jpaRepository.findTimelineAfterCursorExcluding(spaceId, excludedAuthorIds,
+                        cursorCreatedAt, cursorId, limit);
+        return new TimelinePage(entities.stream().map(MomentEntity::toDomain).toList(), null, false);
+    }
+
+    @Override
+    public Optional<Moment> findLatestBySpaceExcluding(UUID spaceId, Collection<UUID> excludedAuthorIds) {
+        Optional<MomentEntity> entity = excludedAuthorIds.isEmpty()
+                ? jpaRepository.findLatestBySpace(spaceId)
+                : jpaRepository.findLatestBySpaceExcludingAuthors(spaceId, excludedAuthorIds);
+        return entity.map(MomentEntity::toDomain);
+    }
+
+    // 작성자·스페이스마다 (space_id, author_id, created_at) / (space_id, created_at) 인덱스를 타는 1건 조회를 한다.
+    // 그룹 정원(6명)과 사용자당 그룹 수(10개)로 조회 횟수에 상한이 있고, 스페이스의 모든 모먼트를 훑지 않는다.
+
+    @Override
+    public List<Moment> findLatestPerAuthor(UUID spaceId, Collection<UUID> authorIds) {
+        return authorIds.stream()
+                .distinct()
+                .map(authorId -> jpaRepository.findLatestBySpaceAndAuthor(spaceId, authorId))
+                .flatMap(Optional::stream)
+                .map(MomentEntity::toDomain)
+                .sorted(Comparator.comparing(Moment::createdAt).reversed())
+                .toList();
+    }
+
+    @Override
+    public List<Moment> findLatestPerSpace(Collection<UUID> spaceIds, Collection<UUID> excludedAuthorIds) {
+        if (spaceIds.isEmpty()) {
+            return List.of();
+        }
+        if (excludedAuthorIds.isEmpty()) {
+            throw new IllegalArgumentException("excludedAuthorIds must not be empty");
+        }
+        return spaceIds.stream()
+                .distinct()
+                .map(spaceId -> jpaRepository.findLatestBySpaceExcludingAuthors(spaceId, excludedAuthorIds))
+                .flatMap(Optional::stream)
+                .map(MomentEntity::toDomain)
+                .sorted(Comparator.comparing(Moment::createdAt).reversed())
+                .toList();
     }
 }

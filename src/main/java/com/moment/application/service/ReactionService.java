@@ -1,6 +1,7 @@
 package com.moment.application.service;
 
 import com.moment.application.port.in.ReactionUseCase;
+import com.moment.application.port.out.BlockPort;
 import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.PushPort.PushMessage;
 import com.moment.application.port.out.ReactionPort;
@@ -30,6 +31,7 @@ public class ReactionService implements ReactionUseCase {
     private final SpaceRepositoryPort spaceRepository;
     private final UserRepositoryPort userRepository;
     private final PushPort pushPort;
+    private final BlockPort blockPort;
     private final Clock clock;
 
     public ReactionService(
@@ -38,12 +40,14 @@ public class ReactionService implements ReactionUseCase {
             SpaceRepositoryPort spaceRepository,
             UserRepositoryPort userRepository,
             PushPort pushPort,
+            BlockPort blockPort,
             Clock clock) {
         this.reactionRepository = reactionRepository;
         this.momentRepository = momentRepository;
         this.spaceRepository = spaceRepository;
         this.userRepository = userRepository;
         this.pushPort = pushPort;
+        this.blockPort = blockPort;
         this.clock = clock;
     }
 
@@ -62,6 +66,11 @@ public class ReactionService implements ReactionUseCase {
                 .anyMatch(m -> m.spaceId().equals(moment.spaceId()));
         if (!isMember) {
             throw new BusinessException(ErrorCode.FORBIDDEN, "해당 스페이스의 멤버가 아니에요.");
+        }
+
+        // 그룹에서는 차단한 뒤에도 같은 스페이스에 남으므로, 작성자와 차단 관계면 반응할 수 없다
+        if (!moment.authorId().equals(meId) && blockPort.existsBlockBetween(meId, moment.authorId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "반응할 수 없는 모먼트예요.");
         }
 
         Instant now = clock.instant();

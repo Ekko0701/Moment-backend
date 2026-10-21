@@ -1,6 +1,7 @@
 package com.moment.adapter.out.persistence.moment;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -54,4 +55,51 @@ interface MomentJpaRepository extends JpaRepository<MomentEntity, UUID> {
                     + "LIMIT 1")
     Optional<MomentEntity> findLatestBySpaceExcludingAuthor(@Param("spaceId") UUID spaceId,
             @Param("excludeAuthorId") UUID excludeAuthorId);
+
+    // 아래 *Excluding 쿼리의 :excluded는 비어 있으면 안 된다(빈 IN 목록은 DB마다 동작이 다르다).
+    // 비어 있으면 어댑터가 제외 조건 없는 쿼리를 쓴다.
+
+    @Query(
+            "SELECT m FROM MomentEntity m "
+                    + "WHERE m.spaceId = :spaceId "
+                    + "  AND m.deletedAt IS NULL "
+                    + "  AND m.authorId NOT IN :excluded "
+                    + "ORDER BY m.createdAt DESC, m.id DESC "
+                    + "LIMIT :limit")
+    List<MomentEntity> findTimelineFirstPageExcluding(@Param("spaceId") UUID spaceId,
+            @Param("excluded") Collection<UUID> excluded, @Param("limit") int limit);
+
+    @Query(
+            "SELECT m FROM MomentEntity m "
+                    + "WHERE m.spaceId = :spaceId "
+                    + "  AND m.deletedAt IS NULL "
+                    + "  AND m.authorId NOT IN :excluded "
+                    + "  AND (m.createdAt < :cursorCreatedAt "
+                    + "       OR (m.createdAt = :cursorCreatedAt AND m.id < :cursorId)) "
+                    + "ORDER BY m.createdAt DESC, m.id DESC "
+                    + "LIMIT :limit")
+    List<MomentEntity> findTimelineAfterCursorExcluding(@Param("spaceId") UUID spaceId,
+            @Param("excluded") Collection<UUID> excluded,
+            @Param("cursorCreatedAt") Instant cursorCreatedAt, @Param("cursorId") UUID cursorId,
+            @Param("limit") int limit);
+
+    @Query(
+            "SELECT m FROM MomentEntity m "
+                    + "WHERE m.spaceId = :spaceId "
+                    + "  AND m.deletedAt IS NULL "
+                    + "  AND m.authorId NOT IN :excluded "
+                    + "ORDER BY m.createdAt DESC, m.id DESC "
+                    + "LIMIT 1")
+    Optional<MomentEntity> findLatestBySpaceExcludingAuthors(@Param("spaceId") UUID spaceId,
+            @Param("excluded") Collection<UUID> excluded);
+
+    @Query(
+            "SELECT m FROM MomentEntity m "
+                    + "WHERE m.spaceId = :spaceId "
+                    + "  AND m.authorId = :authorId "
+                    + "  AND m.deletedAt IS NULL "
+                    + "ORDER BY m.createdAt DESC, m.id DESC "
+                    + "LIMIT 1")
+    Optional<MomentEntity> findLatestBySpaceAndAuthor(@Param("spaceId") UUID spaceId,
+            @Param("authorId") UUID authorId);
 }
