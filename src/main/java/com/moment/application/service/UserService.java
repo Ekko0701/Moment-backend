@@ -18,6 +18,7 @@ import com.moment.domain.space.SpaceMember;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
@@ -36,13 +37,14 @@ public class UserService implements UserUseCase {
     private final DevicePort devicePort;
     private final SpaceRepositoryPort spaceRepository;
     private final PushPort pushPort;
+    private final GroupMemberExit groupMemberExit;
     private final Clock clock;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public UserService(UserRepositoryPort userRepository, AppleAuthPort appleAuthPort,
             AppleCredentialPort appleCredentialPort, RefreshTokenPort refreshTokenPort,
             DevicePort devicePort, SpaceRepositoryPort spaceRepository, PushPort pushPort,
-            Clock clock) {
+            GroupMemberExit groupMemberExit, Clock clock) {
         this.userRepository = userRepository;
         this.appleAuthPort = appleAuthPort;
         this.appleCredentialPort = appleCredentialPort;
@@ -50,6 +52,7 @@ public class UserService implements UserUseCase {
         this.devicePort = devicePort;
         this.spaceRepository = spaceRepository;
         this.pushPort = pushPort;
+        this.groupMemberExit = groupMemberExit;
         this.clock = clock;
     }
 
@@ -100,17 +103,24 @@ public class UserService implements UserUseCase {
         refreshTokenPort.deleteAllByUserId(userId);
         devicePort.deleteAllByUserId(userId);
 
-        // 활성 멤버십 모두 이탈 처리
-        List<SpaceMember> memberships = spaceRepository.findActiveMembershipsByUserId(userId);
+        // 활성 멤버십 모두 이탈 처리. 스페이스 ID 순서로 처리해, 그룹 행 잠금이 다른 탈퇴와 교착되지 않게 한다.
+        List<SpaceMember> memberships = spaceRepository.findActiveMembershipsByUserId(userId).stream()
+                .sorted(Comparator.comparing(SpaceMember::spaceId))
+                .toList();
         for (SpaceMember membership : memberships) {
-            SpaceMember left = membership.leave(now);
-            spaceRepository.saveMember(left);
-
-            // ONE_TO_ONE 스페이스이면 비활성화 + 남은 멤버에게 푸시
             Space space = spaceRepository.findById(membership.spaceId())
                     .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                             "스페이스를 찾을 수 없어요."));
 
+            // 그룹은 나가기와 같은 절차로 빠진다: 방장 승계, 마지막 멤버면 그룹 종료
+            if (space.isGroup()) {
+                groupMemberExit.exit(space.id(), userId, now);
+                continue;
+            }
+
+            spaceRepository.saveMember(membership.leave(now));
+
+            // ONE_TO_ONE 스페이스이면 비활성화 + 남은 멤버에게 푸시
             if (space.type() == SpaceType.ONE_TO_ONE) {
                 Space deactivated = space.deactivate();
                 spaceRepository.save(deactivated);

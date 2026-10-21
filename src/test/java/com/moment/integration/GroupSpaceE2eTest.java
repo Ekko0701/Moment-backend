@@ -142,6 +142,27 @@ class GroupSpaceE2eTest {
                 .isEqualTo("INVALID_REQUEST");
     }
 
+    @Test
+    @DisplayName("그룹: 방장이 탈퇴하면 먼저 들어온 멤버가 방장이 되고, 마지막 멤버가 탈퇴하면 그룹과 코드가 사라진다")
+    void withdrawalHandsOverAndClosesGroup() {
+        JsonNode created = ok(post("/v1/groups", tokenA, "{\"name\":\"탈퇴 확인\"}"));
+        String spaceId = created.get("space").get("id").asText();
+        String code = created.get("inviteCode").asText();
+        ok(post("/v1/groups/join", tokenB, "{\"code\":\"" + code + "\"}"));
+
+        // 방장 A 탈퇴 → B가 방장이 되어 코드를 재발급할 수 있다
+        ok(delete("/v1/users/me", tokenA));
+        JsonNode bGroup = findSpace(ok(get("/v1/spaces/me", tokenB)), spaceId);
+        assertThat(bGroup.get("myRole").asText()).isEqualTo("OWNER");
+        assertThat(bGroup.get("memberCount").asInt()).isEqualTo(1);
+        String reissued = ok(post("/v1/groups/" + spaceId + "/invite-code", tokenB, null)).get("code").asText();
+
+        // 마지막 멤버 B 탈퇴 → 그룹 종료, 코드로 들어올 수 없다
+        ok(delete("/v1/users/me", tokenB));
+        assertThat(errorCode(post("/v1/groups/join", tokenC, "{\"code\":\"" + reissued + "\"}")))
+                .isEqualTo("INVALID_REQUEST");
+    }
+
     // ---------- helpers
 
     private String login(String identityToken, String nickname) {

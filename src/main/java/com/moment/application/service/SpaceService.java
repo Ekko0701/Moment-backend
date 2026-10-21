@@ -1,7 +1,6 @@
 package com.moment.application.service;
 
 import com.moment.application.port.in.SpaceUseCase;
-import com.moment.application.port.out.GroupInviteCodePort;
 import com.moment.application.port.out.PushPort;
 import com.moment.application.port.out.PushPort.PushMessage;
 import com.moment.application.port.out.SpaceRepositoryPort;
@@ -30,19 +29,19 @@ public class SpaceService implements SpaceUseCase {
     private final SpaceRepositoryPort spaceRepository;
     private final UserRepositoryPort userRepository;
     private final PushPort pushPort;
-    private final GroupInviteCodePort groupInviteCodePort;
+    private final GroupMemberExit groupMemberExit;
     private final Clock clock;
 
     public SpaceService(
             SpaceRepositoryPort spaceRepository,
             UserRepositoryPort userRepository,
             PushPort pushPort,
-            GroupInviteCodePort groupInviteCodePort,
+            GroupMemberExit groupMemberExit,
             Clock clock) {
         this.spaceRepository = spaceRepository;
         this.userRepository = userRepository;
         this.pushPort = pushPort;
-        this.groupInviteCodePort = groupInviteCodePort;
+        this.groupMemberExit = groupMemberExit;
         this.clock = clock;
     }
 
@@ -151,38 +150,9 @@ public class SpaceService implements SpaceUseCase {
                         Map.of())));
     }
 
-    // 스페이스 행을 잠가 입장·내보내기와 직렬화한다. 방장 위임과 마지막 멤버 판정이 동시 변경에 흔들리지 않게 한다.
     private void leaveGroup(UUID meId, UUID spaceId) {
-        Space space = spaceRepository.findByIdForUpdate(spaceId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "스페이스를 찾을 수 없어요."));
-        SpaceMember me = spaceRepository.findMember(spaceId, meId)
-                .filter(SpaceMember::isActive)
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "스페이스에 속해있지 않아요."));
-
-        Instant now = clock.instant();
-        spaceRepository.saveMember(me.leave(now));
-
-        List<SpaceMember> remaining = spaceRepository.findActiveMembersBySpaceId(spaceId).stream()
-                .filter(m -> !m.userId().equals(meId))
-                .toList();
-
-        if (remaining.isEmpty()) {
-            spaceRepository.save(space.deactivate());
-            groupInviteCodePort.deleteBySpaceId(spaceId);
-            return;
-        }
-
-        if (me.isOwner()) {
-            SpaceMember successor = remaining.stream()
-                    .min(Comparator.comparing(SpaceMember::joinedAt))
-                    .orElseThrow();
-            spaceRepository.saveMember(successor.promoteToOwner());
-            pushPort.send(new PushMessage(
-                    successor.userId(),
-                    "OWNER_CHANGED",
-                    space.name(),
-                    "그룹의 새 방장이 되었어요.",
-                    Map.of("spaceId", spaceId.toString())));
+        if (!groupMemberExit.exit(spaceId, meId, clock.instant())) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "스페이스에 속해있지 않아요.");
         }
     }
 

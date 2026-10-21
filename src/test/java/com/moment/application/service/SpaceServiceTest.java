@@ -52,7 +52,8 @@ class SpaceServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new SpaceService(spaceRepository, userRepository, pushPort, groupInviteCodePort,
+        service = new SpaceService(spaceRepository, userRepository, pushPort,
+                new GroupMemberExit(spaceRepository, groupInviteCodePort, pushPort),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
