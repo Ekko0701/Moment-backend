@@ -133,7 +133,8 @@ public class SpaceService implements SpaceUseCase {
 
     @Override
     public void leave(UUID meId, UUID spaceId) {
-        Space space = spaceRepository.findById(spaceId)
+        // 스페이스 행을 먼저 잠그고 읽어, 동시에 일어난 종료·이름 변경의 최신 상태를 본다
+        Space space = spaceRepository.findByIdForUpdate(spaceId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "스페이스를 찾을 수 없어요."));
 
@@ -178,7 +179,8 @@ public class SpaceService implements SpaceUseCase {
 
     @Override
     public void rename(UUID meId, UUID spaceId, String name) {
-        Space space = spaceRepository.findById(spaceId)
+        // 스페이스 행을 잠가 나가기·종료와 직렬화한다. 잠금 없이 쓰면 그사이 종료된 그룹을 ACTIVE로 덮어쓸 수 있다
+        Space space = spaceRepository.findByIdForUpdate(spaceId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "스페이스를 찾을 수 없어요."));
 

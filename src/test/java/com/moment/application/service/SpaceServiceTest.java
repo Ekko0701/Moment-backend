@@ -71,7 +71,7 @@ class SpaceServiceTest {
         SpaceMember partner = new SpaceMember(UUID.randomUUID(), space.id(), partnerId,
                 MemberRole.MEMBER, NOW.minusSeconds(3600), null);
 
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findActiveMembersBySpaceId(space.id()))
                 .thenReturn(List.of(mine, partner));
 
@@ -102,7 +102,7 @@ class SpaceServiceTest {
         SpaceMember mine = new SpaceMember(UUID.randomUUID(), space.id(), meId,
                 MemberRole.OWNER, NOW.minusSeconds(3600), null);
 
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of(mine));
 
         service.rename(meId, space.id(), "  우리들의 공간  ");
@@ -120,7 +120,7 @@ class SpaceServiceTest {
         SpaceMember mine = new SpaceMember(UUID.randomUUID(), space.id(), meId,
                 MemberRole.OWNER, NOW.minusSeconds(3600), null);
 
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of(mine));
 
         service.rename(meId, space.id(), "   ");
@@ -139,7 +139,7 @@ class SpaceServiceTest {
         SpaceMember mine = new SpaceMember(UUID.randomUUID(), space.id(), meId,
                 MemberRole.OWNER, NOW.minusSeconds(3600), null);
 
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of(mine));
 
         assertThatThrownBy(() -> service.rename(strangerId, space.id(), "탈취 시도"))
@@ -159,7 +159,7 @@ class SpaceServiceTest {
         SpaceMember left = new SpaceMember(UUID.randomUUID(), space.id(), meId,
                 MemberRole.OWNER, NOW.minusSeconds(3600), NOW.minusSeconds(60));
 
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of(left));
 
         assertThatThrownBy(() -> service.rename(meId, space.id(), "새 이름"))
@@ -172,7 +172,7 @@ class SpaceServiceTest {
     @DisplayName("이름 변경: 없는 스페이스면 NOT_FOUND")
     void rename_missingSpace_throwsNotFound() {
         UUID spaceId = UUID.randomUUID();
-        when(spaceRepository.findById(spaceId)).thenReturn(Optional.empty());
+        when(spaceRepository.findByIdForUpdate(spaceId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.rename(UUID.randomUUID(), spaceId, "새 이름"))
                 .isInstanceOf(BusinessException.class)
@@ -196,7 +196,6 @@ class SpaceServiceTest {
         SpaceMember owner = new SpaceMember(UUID.randomUUID(), space.id(), meId, MemberRole.OWNER, NOW.minusSeconds(900), null);
         SpaceMember earliest = new SpaceMember(UUID.randomUUID(), space.id(), earliestId, MemberRole.MEMBER, NOW.minusSeconds(800), null);
         SpaceMember later = new SpaceMember(UUID.randomUUID(), space.id(), laterId, MemberRole.MEMBER, NOW.minusSeconds(100), null);
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findMember(space.id(), meId)).thenReturn(Optional.of(owner));
         when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of(later, earliest));
@@ -224,7 +223,6 @@ class SpaceServiceTest {
         Space space = group();
         SpaceMember me = new SpaceMember(UUID.randomUUID(), space.id(), meId, MemberRole.MEMBER, NOW.minusSeconds(100), null);
         SpaceMember owner = new SpaceMember(UUID.randomUUID(), space.id(), UUID.randomUUID(), MemberRole.OWNER, NOW.minusSeconds(900), null);
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findMember(space.id(), meId)).thenReturn(Optional.of(me));
         when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of(owner));
@@ -242,7 +240,6 @@ class SpaceServiceTest {
         UUID meId = UUID.randomUUID();
         Space space = group();
         SpaceMember me = new SpaceMember(UUID.randomUUID(), space.id(), meId, MemberRole.OWNER, NOW.minusSeconds(100), null);
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findMember(space.id(), meId)).thenReturn(Optional.of(me));
         when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of());
@@ -263,7 +260,7 @@ class SpaceServiceTest {
         Space space = group();
         SpaceMember me = new SpaceMember(UUID.randomUUID(), space.id(), meId, MemberRole.MEMBER, NOW, null);
         SpaceMember owner = new SpaceMember(UUID.randomUUID(), space.id(), ownerId, MemberRole.OWNER, NOW, null);
-        when(spaceRepository.findById(space.id())).thenReturn(Optional.of(space));
+        when(spaceRepository.findByIdForUpdate(space.id())).thenReturn(Optional.of(space));
         when(spaceRepository.findActiveMembersBySpaceId(space.id())).thenReturn(List.of(me, owner));
 
         assertThatThrownBy(() -> service.rename(meId, space.id(), "새 이름"))
