@@ -1,5 +1,7 @@
 package com.moment.application.port.in;
 
+import com.moment.domain.moment.TextColor;
+import com.moment.domain.moment.TextPosition;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,7 +24,7 @@ public interface MomentUseCase {
      * 모먼트 생성.
      *
      * @param meId 현재 사용자 ID
-     * @param command imageUrl, text 포함
+     * @param command imageUrl, text와 사진 위 글씨의 위치·색 포함
      * @return 생성된 모먼트 뷰
      */
     MomentView create(UUID meId, CreateMomentCommand command);
@@ -65,7 +67,13 @@ public interface MomentUseCase {
     /** 내가 속한 스페이스마다 나와 차단 관계를 제외한 최신 모먼트 1건. 모먼트가 없는 스페이스는 빠진다. */
     List<MomentView> latestForMySpaces(UUID meId);
 
-    record CreateMomentCommand(UUID spaceId, String imageUrl, String text) {
+    /** textPosition·textColor는 사진 위 글씨의 시작 모서리와 색. 비워 두면 기본값을 쓴다. */
+    record CreateMomentCommand(UUID spaceId, String imageUrl, String text,
+            TextPosition textPosition, TextColor textColor) {
+
+        public CreateMomentCommand(UUID spaceId, String imageUrl, String text) {
+            this(spaceId, imageUrl, text, null, null);
+        }
     }
 
     record PresignedUrlResponse(String uploadUrl, String imageUrl) {
@@ -77,6 +85,8 @@ public interface MomentUseCase {
             AuthorView author,
             String imageUrl,
             String text,
+            TextPosition textPosition,
+            TextColor textColor,
             long createdAtMs,
             List<ReactionCount> reactions,
             String myReaction) {

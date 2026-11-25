@@ -9,6 +9,8 @@ import com.moment.application.port.in.MomentUseCase.CreateMomentCommand;
 import com.moment.application.port.in.MomentUseCase.MomentView;
 import com.moment.application.port.in.MomentUseCase.TimelinePage;
 import com.moment.common.response.ApiResponse;
+import com.moment.domain.moment.TextColor;
+import com.moment.domain.moment.TextPosition;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
@@ -44,7 +46,8 @@ public class MomentController {
     ApiResponse<MomentResponse> create(
             @AuthenticationPrincipal UUID userId,
             @Valid @RequestBody MomentRequest request) {
-        var command = new CreateMomentCommand(request.spaceId(), request.imageUrl(), request.text());
+        var command = new CreateMomentCommand(request.spaceId(), request.imageUrl(), request.text(),
+                TextPosition.parse(request.textPosition()), TextColor.parse(request.textColor()));
         var view = momentUseCase.create(userId, command);
         return ApiResponse.ok(buildResponse(view));
     }

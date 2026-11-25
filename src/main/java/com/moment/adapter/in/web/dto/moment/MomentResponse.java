@@ -10,6 +10,8 @@ public record MomentResponse(
     AuthorResponse author,
     String imageUrl,
     String text,
+    String textPosition,
+    String textColor,
     long createdAtMs,
     List<ReactionCountResponse> reactions,
     String myReaction) {
@@ -25,6 +27,8 @@ public record MomentResponse(
             view.author().profileImageUrl()),
         view.imageUrl(),
         view.text(),
+        view.textPosition() != null ? view.textPosition().name() : null,
+        view.textColor() != null ? view.textColor().name() : null,
         view.createdAtMs(),
         view.reactions().stream()
             .map(r -> new ReactionCountResponse(r.emoji(), r.count()))
