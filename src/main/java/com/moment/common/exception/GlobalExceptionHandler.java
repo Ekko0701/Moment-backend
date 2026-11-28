@@ -1,6 +1,7 @@
 package com.moment.common.exception;
 
 import com.moment.common.response.ApiResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.NoHandlerFoundException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -64,6 +67,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.badRequest()
                 .body(ApiResponse.error(ErrorCode.INVALID_REQUEST.name(),
                         ex.getParameterName() + " 파라미터가 필요해요."));
+    }
+
+    // 컨트롤러 매핑도 정적 리소스도 없는 경로 → 404
+    @ExceptionHandler({NoResourceFoundException.class, NoHandlerFoundException.class})
+    ResponseEntity<ApiResponse<Void>> handleNoHandler(Exception ex, HttpServletRequest request) {
+        log.warn("no_handler method={} path={}", request.getMethod(), request.getRequestURI());
+        return ResponseEntity.status(ErrorCode.NOT_FOUND.getStatus())
+                .body(ApiResponse.error(ErrorCode.NOT_FOUND.name(),
+                        ErrorCode.NOT_FOUND.getMessage()));
     }
 
     // 동시성 충돌(데드락 패자·잠금 실패 등) → 500 대신 409로 매핑.
