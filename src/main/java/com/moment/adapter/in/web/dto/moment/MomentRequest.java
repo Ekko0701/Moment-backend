@@ -9,5 +9,9 @@ public record MomentRequest(
         UUID spaceId,
         String imageUrl,
         @Size(max = 500, message = "글은 500자 이하로 입력해 주세요.")
-        String text) {
+        String text,
+        /** 사진 위 글씨의 시작 모서리: TOP 또는 BOTTOM. 생략하면 TOP. */
+        String textPosition,
+        /** 사진 위 글씨 색: WHITE, INK, PEACH, BUTTER, LILAC. 생략하면 WHITE. */
+        String textColor) {
 }
