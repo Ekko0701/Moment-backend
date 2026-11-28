@@ -89,7 +89,7 @@ public class MomentService implements MomentUseCase {
 
         Instant now = clock.instant();
         Moment moment = Moment.create(UUID.randomUUID(), command.spaceId(), meId,
-                command.imageUrl(), command.text(), now);
+                command.imageUrl(), command.text(), command.textPosition(), command.textColor(), now);
         Moment saved = momentRepository.save(moment);
 
         // 팬아웃: 작성자와 차단 관계를 제외한 활성 멤버에게 알림.
@@ -310,6 +310,8 @@ public class MomentService implements MomentUseCase {
                 authorView,
                 moment.imageUrl(),
                 moment.text(),
+                moment.textPosition(),
+                moment.textColor(),
                 moment.createdAt().toEpochMilli(),
                 reactionCounts,
                 myReaction);

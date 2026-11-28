@@ -1,8 +1,12 @@
 package com.moment.adapter.out.persistence.moment;
 
 import com.moment.domain.moment.Moment;
+import com.moment.domain.moment.TextColor;
+import com.moment.domain.moment.TextPosition;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.time.Instant;
@@ -30,6 +34,14 @@ public class MomentEntity {
     @Column(name = "text", length = 500)
     private String text;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "text_position", length = 8)
+    private TextPosition textPosition;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "text_color", length = 8)
+    private TextColor textColor;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -49,10 +61,12 @@ public class MomentEntity {
         this.authorId = moment.authorId();
         this.imageUrl = moment.imageUrl();
         this.text = moment.text();
+        this.textPosition = moment.textPosition();
+        this.textColor = moment.textColor();
         this.deletedAt = moment.deletedAt();
     }
 
     Moment toDomain() {
-        return new Moment(id, spaceId, authorId, imageUrl, text, createdAt, deletedAt);
+        return new Moment(id, spaceId, authorId, imageUrl, text, textPosition, textColor, createdAt, deletedAt);
     }
 }
